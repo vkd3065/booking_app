@@ -113,7 +113,7 @@ export default function Booking({ resources }: { resources: Resource[] }) {
         loadTaken();
         // 보고 있는 날짜면 알림
         if (payload?.type === "booked" && kstDate(new Date(payload.slot)) === day) {
-          showToast(`${label(payload.slot)}이 방금 다른 분에게 예약되었습니다.`);
+          showToast(`${label(payload.slot)}가 방금 다른 분에게 예약되었습니다.`);
         }
       })
       .subscribe();
