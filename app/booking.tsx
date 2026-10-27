@@ -378,16 +378,25 @@ export default function Booking({
         <p className="mt-2 text-sm text-gray-500">예약이 없습니다.</p>
       ) : (
         <ul className="mt-2 divide-y rounded border">
-          {mine.map((r) => (
+          {mine.map((r) => {
+            const deadline = new Date(r.slot).getTime() - grade.cancelHours * 3600000;
+            const late = now > deadline;
+            return (
             <li key={r.id} className="flex items-center justify-between px-3 py-2 text-sm">
               <span>
                 {resources.find((x) => x.id === r.resource_id)?.name} / {label(r.slot)}
+                <span className={`ml-2 text-xs ${late ? "text-red-600" : "text-gray-500"}`}>
+                  {late
+                    ? "무료 취소 마감 지남 (취소 시 −15점)"
+                    : `무료 취소: ${label(new Date(deadline).toISOString())}까지`}
+                </span>
               </span>
               <button className="text-red-600" onClick={() => cancel(r)}>
                 취소
               </button>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 
