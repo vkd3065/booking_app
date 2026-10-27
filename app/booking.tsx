@@ -1,15 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { gradeOf } from "@/lib/grade";
 
 type Resource = { id: number; name: string; open_hour: number; close_hour: number };
 type MyReservation = { id: number; slot: string; resource_id: number };
 
 // 내가 보낸 알림 구분용
 const TAB_ID = Math.random().toString(36).slice(2);
-
-const DAYS_AHEAD = 14; // 예약 가능 기간 (일)
 
 // 한국 날짜 (YYYY-MM-DD)
 function kstDate(d: Date) {
@@ -39,14 +39,27 @@ const ERRORS: Record<string, string> = {
   NO_RESOURCE: "예약할 수 없는 대상입니다.",
   LOGIN_REQUIRED: "다시 로그인해 주세요.",
   CANNOT_CANCEL: "취소할 수 없는 예약입니다.",
+  TOO_FAR: "등급 기준 예약 가능 기간을 넘는 시간입니다.",
+  LIMIT_RESERVATIONS: "동시에 잡을 수 있는 예약 수를 모두 쓰고 있어요.",
+  SUSPENDED: "점수가 낮아 예약이 제한된 상태입니다.",
 };
 function toMessage(raw: string) {
   const key = Object.keys(ERRORS).find((k) => raw.includes(k));
   return key ? ERRORS[key] : "오류가 발생했습니다: " + raw;
 }
 
-export default function Booking({ resources }: { resources: Resource[] }) {
+export default function Booking({
+  resources,
+  score,
+  suspendedUntil,
+}: {
+  resources: Resource[];
+  score: number;
+  suspendedUntil: string | null;
+}) {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
+  const grade = gradeOf(score);
   // 1분마다 현재 시간 갱신
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -56,8 +69,8 @@ export default function Booking({ resources }: { resources: Resource[] }) {
 
   const days = useMemo(
     () =>
-      Array.from({ length: DAYS_AHEAD }, (_, i) => kstDate(new Date(now + i * 86400000))),
-    [now]
+      Array.from({ length: grade.days }, (_, i) => kstDate(new Date(now + i * 86400000))),
+    [now, grade.days]
   );
 
   const [resourceId, setResourceId] = useState(resources[0]?.id ?? 0);
@@ -140,17 +153,29 @@ export default function Booking({ resources }: { resources: Resource[] }) {
   }
 
   async function cancel(r: MyReservation) {
-    if (!confirm(`${label(r.slot)} 예약을 취소할까요?`)) return;
+    // 무료 취소 마감이 지났으면 -15점 경고
+    const late = now > new Date(r.slot).getTime() - grade.cancelHours * 3600000;
+    const msg = late
+      ? `${label(r.slot)} 예약은 무료 취소 마감(${grade.cancelHours}시간 전)이 지났어요.\n지금 취소하면 신용 점수가 15점 깎여요. 그래도 취소할까요?`
+      : `${label(r.slot)} 예약을 취소할까요?`;
+    if (!confirm(msg)) return;
     const { error } = await supabase.rpc("cancel_booking", { p_id: r.id });
     if (error) {
       showToast(toMessage(error.message));
     } else {
       showToast("취소했습니다.", true);
       await supabase.channel(`slots-${r.resource_id}`).httpSend("changed", { type: "canceled", slot: r.slot, from: TAB_ID });
+      router.refresh();
     }
     loadTaken();
     loadMine();
   }
+
+  // 예약 제한 상태 (점수 50 미만)
+  const suspended = grade.max === 0;
+  const suspendedDay = suspendedUntil
+    ? new Date(suspendedUntil).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" })
+    : null;
 
   const hours = resource
     ? Array.from(
@@ -161,8 +186,23 @@ export default function Booking({ resources }: { resources: Resource[] }) {
 
   return (
     <div className="mt-6">
+      {/* 등급 안내 */}
+      {suspended ? (
+        <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+          신용 점수가 50점 미만이라 새 예약이 제한된 상태입니다.
+          {suspendedDay && ` ${suspendedDay}부터 다시 예약할 수 있어요.`}
+        </div>
+      ) : (
+        <p className="text-sm text-gray-500">
+          {grade.name} 등급: {grade.days}일 이내 예약, 동시 {grade.max}건, 무료 취소는{" "}
+          {grade.cancelHours}시간 전까지
+        </p>
+      )}
+
       {/* 예약 대상 */}
-      <div className="flex flex-wrap gap-2">
+      {!suspended && (
+      <>
+      <div className="mt-4 flex flex-wrap gap-2">
         {resources.map((r) => (
           <button
             key={r.id}
@@ -225,6 +265,9 @@ export default function Booking({ resources }: { resources: Resource[] }) {
           );
         })}
       </div>
+
+      </>
+      )}
 
       {/* 내 예약 */}
       <h2 className="mt-8 font-semibold">내 예약</h2>
