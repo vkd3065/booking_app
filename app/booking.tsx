@@ -1,12 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { gradeOf } from "@/lib/grade";
 
 type Resource = { id: number; name: string; open_hour: number; close_hour: number };
 type MyReservation = { id: number; slot: string; resource_id: number };
+// 확인 창이 떠 있는 동안의 예약 대기
+type Pending = { slot: string; resourceId: number; ahead: number; expiresAt: number; note: string };
+
+const HOLD_SECONDS = 60;
+function holdUntil() {
+  return Date.now() + HOLD_SECONDS * 1000;
+}
 
 // 내가 보낸 알림 구분용
 const TAB_ID = Math.random().toString(36).slice(2);
@@ -42,6 +49,7 @@ const ERRORS: Record<string, string> = {
   TOO_FAR: "등급 기준 예약 가능 기간을 넘는 시간입니다.",
   LIMIT_RESERVATIONS: "동시에 잡을 수 있는 예약 수를 모두 쓰고 있어요.",
   SUSPENDED: "점수가 낮아 예약이 제한된 상태입니다.",
+  WAIT_TURN: "먼저 누른 분이 아직 결정 중이에요. 그분이 취소하면 예약할 수 있어요.",
 };
 function toMessage(raw: string) {
   const key = Object.keys(ERRORS).find((k) => raw.includes(k));
@@ -79,6 +87,9 @@ export default function Booking({
   const [mine, setMine] = useState<MyReservation[]>([]);
   const [busySlot, setBusySlot] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
+  const [pending, setPending] = useState<Pending | null>(null);
+  const pendingRef = useRef<Pending | null>(null);
+  const [left, setLeft] = useState(HOLD_SECONDS);
 
   const resource = resources.find((r) => r.id === resourceId);
 
@@ -117,6 +128,35 @@ export default function Booking({
     loadMine();
   }, [loadMine]);
 
+  // 취소: 대기 해제 → 뒷사람이 예약할 수 있게 알림
+  const cancelHold = useCallback(
+    async (msg?: string) => {
+      const p = pendingRef.current;
+      if (!p) return;
+      setPending(null);
+      await supabase.rpc("release_hold", { p_resource_id: p.resourceId, p_slot: p.slot });
+      supabase.channel(`slots-${p.resourceId}`).httpSend("changed", { type: "released", slot: p.slot, from: TAB_ID });
+      if (msg) showToast(msg);
+    },
+    [supabase, showToast]
+  );
+
+  // 대기 상태를 실시간 처리에서도 볼 수 있게
+  useEffect(() => {
+    pendingRef.current = pending;
+  }, [pending]);
+
+  // 60초 카운트다운, 끝나면 대기 자동 취소
+  useEffect(() => {
+    if (!pending) return;
+    const t = setInterval(() => {
+      const sec = Math.ceil((pending.expiresAt - Date.now()) / 1000);
+      setLeft(Math.max(0, sec));
+      if (sec <= 0) cancelHold(`${HOLD_SECONDS}초가 지나 예약 대기가 취소됐어요.`);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [pending, cancelHold]);
+
   // 다른 사람이 예약/취소하면 갱신
   useEffect(() => {
     const channel = supabase
@@ -124,6 +164,29 @@ export default function Booking({
       .on("broadcast", { event: "changed" }, ({ payload }) => {
         if (payload?.from === TAB_ID) return;
         loadTaken();
+        const p = pendingRef.current;
+        if (p && p.resourceId === resourceId && sameTime(p.slot, payload?.slot)) {
+          if (payload?.type === "booked") {
+            // 앞사람이 확인함 → 내 대기는 끝
+            setPending(null);
+            showToast(ERRORS.SLOT_TAKEN);
+            return;
+          }
+          if (payload?.type === "released") {
+            // 앞사람이 취소함 → 내 순서 다시 확인
+            supabase
+              .rpc("hold_position", { p_resource_id: p.resourceId, p_slot: p.slot })
+              .then(({ data }) => {
+                const ahead = (data as number) ?? 0;
+                setPending((cur) =>
+                  cur && cur.slot === p.slot
+                    ? { ...cur, ahead, note: ahead === 0 ? "먼저 누른 분이 취소했어요. 이제 확인을 누르면 예약돼요." : cur.note }
+                    : cur
+                );
+              });
+            return;
+          }
+        }
         // 보고 있는 날짜면 알림
         if (payload?.type === "booked" && kstDate(new Date(payload.slot)) === day) {
           showToast(`${label(payload.slot)}가 방금 다른 분에게 예약되었습니다.`);
@@ -135,22 +198,56 @@ export default function Booking({
     };
   }, [supabase, resourceId, day, loadTaken, showToast]);
 
-  async function book(slot: string) {
+  // 시간 칸을 누름: 예약 대기 등록 (아직 예약 아님)
+  async function hold(slot: string) {
     setBusySlot(slot);
-    const { error } = await supabase.rpc("book_slot", {
+    const { data, error } = await supabase.rpc("hold_slot", {
       p_resource_id: resourceId,
       p_slot: slot,
     });
     setBusySlot(null);
     if (error) {
       showToast(toMessage(error.message));
+      loadTaken();
+      return;
+    }
+    setLeft(HOLD_SECONDS);
+    setPending({
+      slot,
+      resourceId,
+      ahead: (data as number) ?? 0,
+      expiresAt: holdUntil(),
+      note: "",
+    });
+  }
+
+  // 확인: 이때 예약됨 (앞에 대기 중인 사람이 있으면 기다림)
+  async function confirmHold() {
+    if (!pending) return;
+    const p = pending;
+    setBusySlot(p.slot);
+    const { error } = await supabase.rpc("book_slot", {
+      p_resource_id: p.resourceId,
+      p_slot: p.slot,
+    });
+    setBusySlot(null);
+    if (error) {
+      if (error.message.includes("WAIT_TURN")) {
+        setPending({ ...p, note: ERRORS.WAIT_TURN });
+        return;
+      }
+      await supabase.rpc("release_hold", { p_resource_id: p.resourceId, p_slot: p.slot });
+      setPending(null);
+      showToast(toMessage(error.message));
     } else {
-      showToast(`${label(slot)} 예약 완료`, true);
-      supabase.channel(`slots-${resourceId}`).httpSend("changed", { type: "booked", slot, from: TAB_ID });
+      setPending(null);
+      showToast(`${label(p.slot)} 예약 완료`, true);
+      supabase.channel(`slots-${p.resourceId}`).httpSend("changed", { type: "booked", slot: p.slot, from: TAB_ID });
     }
     loadTaken();
     loadMine();
   }
+
 
   async function cancel(r: MyReservation) {
     // 무료 취소 마감이 지났으면 -15점 경고
@@ -248,7 +345,7 @@ export default function Booking({
             <button
               key={h}
               disabled={disabled}
-              onClick={() => book(slot)}
+              onClick={() => hold(slot)}
               className={`rounded border py-3 text-sm ${
                 isMine
                   ? "border-blue-600 bg-blue-50 text-blue-700"
@@ -288,10 +385,48 @@ export default function Booking({
         </ul>
       )}
 
+      {/* 예약 확인 창 (떠 있는 동안은 예약 대기 상태) */}
+      {pending && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded bg-white p-5 text-sm shadow-lg">
+            <p className="text-base font-semibold">
+              {resources.find((x) => x.id === pending.resourceId)?.name} / {label(pending.slot)}
+            </p>
+            <p className="mt-2">이 시간으로 예약할까요?</p>
+            <p className="mt-1 text-gray-500">
+              무료 취소는{" "}
+              {label(new Date(new Date(pending.slot).getTime() - grade.cancelHours * 3600000).toISOString())}
+              까지예요.
+            </p>
+            {pending.ahead > 0 && !pending.note && (
+              <p className="mt-3 rounded bg-yellow-50 px-3 py-2 text-yellow-800">
+                먼저 누른 분이 {pending.ahead}명 있어요. 그분이 취소하면 예약할 수 있어요.
+              </p>
+            )}
+            {pending.note && (
+              <p className="mt-3 rounded bg-yellow-50 px-3 py-2 text-yellow-800">{pending.note}</p>
+            )}
+            <p className="mt-3 text-xs text-gray-400">{left}초 뒤 자동으로 취소됩니다.</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button className="rounded border px-4 py-2" onClick={() => cancelHold()}>
+                취소
+              </button>
+              <button
+                disabled={busySlot !== null}
+                className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+                onClick={confirmHold}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 알림 */}
       {toast && (
         <div
-          className={`fixed bottom-6 left-1/2 w-max max-w-[90vw] -translate-x-1/2 rounded px-4 py-3 text-sm text-white shadow ${
+          className={`fixed bottom-6 left-1/2 z-20 w-max max-w-[90vw] -translate-x-1/2 rounded px-4 py-3 text-sm text-white shadow ${
             toast.ok ? "bg-gray-900" : "bg-red-600"
           }`}
         >
