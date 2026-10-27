@@ -84,6 +84,7 @@ export default function Booking({
   const [resourceId, setResourceId] = useState(resources[0]?.id ?? 0);
   const [day, setDay] = useState(days[0]);
   const [taken, setTaken] = useState<string[]>([]);
+  const [held, setHeld] = useState<string[]>([]); // 다른 사람이 결정 중인 시간
   const [mine, setMine] = useState<MyReservation[]>([]);
   const [busySlot, setBusySlot] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
@@ -106,6 +107,11 @@ export default function Booking({
       p_day: day,
     });
     setTaken((data as string[] | null) ?? []);
+    const { data: h } = await supabase.rpc("get_held_slots", {
+      p_resource_id: resourceId,
+      p_day: day,
+    });
+    setHeld((h as string[] | null) ?? []);
   }, [supabase, resourceId, day]);
 
   // 내 예약
@@ -122,6 +128,8 @@ export default function Booking({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadTaken();
+    const t = setInterval(loadTaken, 20000);
+    return () => clearInterval(t);
   }, [loadTaken]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -211,6 +219,7 @@ export default function Booking({
       loadTaken();
       return;
     }
+    supabase.channel(`slots-${resourceId}`).httpSend("changed", { type: "held", slot, from: TAB_ID });
     setLeft(HOLD_SECONDS);
     setPending({
       slot,
@@ -348,6 +357,7 @@ export default function Booking({
           const isPast = new Date(slot).getTime() <= now;
           const isMine = mine.some((m) => m.resource_id === resourceId && sameTime(m.slot, slot));
           const isTaken = taken.some((t) => sameTime(t, slot));
+          const isHeld = !isTaken && held.some((t) => sameTime(t, slot));
           const disabled = suspended || full || isPast || isTaken || busySlot !== null;
           return (
             <button
@@ -359,12 +369,14 @@ export default function Booking({
                   ? "border-blue-600 bg-blue-50 text-blue-700"
                   : isTaken || isPast || suspended || full
                   ? "bg-gray-100 text-gray-400"
+                  : isHeld
+                  ? "border-yellow-400 bg-yellow-50 text-yellow-800"
                   : "hover:bg-gray-50"
               }`}
             >
               {h}:00
               <div className="text-xs">
-                {isMine ? "내 예약" : isTaken ? "예약됨" : isPast ? "지남" : suspended ? "제한" : full ? "한도" : busySlot === slot ? "..." : "가능"}
+                {isMine ? "내 예약" : isTaken ? "예약됨" : isPast ? "지남" : suspended ? "제한" : full ? "한도" : busySlot === slot ? "..." : isHeld ? "다른 분이 결정 중" : "가능"}
               </div>
             </button>
           );
