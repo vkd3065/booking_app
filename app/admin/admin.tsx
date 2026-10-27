@@ -17,6 +17,9 @@ const STATUS_LABEL: Record<string, string> = {
   no_show: "노쇼",
 };
 
+// 노쇼 기준: 예약 시각 15분 경과까지 미방문
+const NO_SHOW_MINUTES = 15;
+
 function label(slot: string) {
   return new Date(slot).toLocaleString("ko-KR", {
     timeZone: "Asia/Seoul",
@@ -33,6 +36,12 @@ export default function Admin() {
   const [decided, setDecided] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  // 30초마다 현재 시간 갱신 (경과 시간 표시용)
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   const load = useCallback(async () => {
     const cols = "id, slot, status, score_delta, profiles(name, score), resources(name)";
@@ -78,11 +87,18 @@ export default function Admin() {
         <p className="mt-2 text-sm text-gray-500">판정할 예약이 없습니다.</p>
       ) : (
         <ul className="mt-2 divide-y rounded border">
-          {pending.map((r) => (
+          {pending.map((r) => {
+            const passed = Math.floor((now - new Date(r.slot).getTime()) / 60000);
+            const canNoShow = passed >= NO_SHOW_MINUTES;
+            return (
             <li key={r.id} className="flex items-center justify-between px-3 py-2 text-sm">
               <span>
                 {label(r.slot)} / {r.resources?.name} / {r.profiles?.name ?? "회원"} (점수{" "}
                 {r.profiles?.score})
+                <span className="ml-2 text-xs text-gray-500">
+                  {passed < 60 ? `${passed}분 경과` : `${Math.floor(passed / 60)}시간 경과`}
+                  {!canNoShow && `, ${NO_SHOW_MINUTES - passed}분 뒤 노쇼 판정 가능`}
+                </span>
               </span>
               <span className="flex gap-2">
                 <button
@@ -93,15 +109,19 @@ export default function Admin() {
                   방문
                 </button>
                 <button
-                  disabled={busy}
-                  className="rounded border border-red-300 px-2 py-1 text-red-600"
-                  onClick={() => run("mark_no_show", r.id, "노쇼로 처리했습니다. (−30점)")}
+                  disabled={busy || !canNoShow}
+                  className="rounded border border-red-300 px-2 py-1 text-red-600 disabled:opacity-40"
+                  onClick={() => {
+                    if (!confirm(`${r.profiles?.name ?? "회원"} 님 ${label(r.slot)} 예약을 노쇼로 처리할까요?\n신용 점수가 30점 깎여요.`)) return;
+                    run("mark_no_show", r.id, "노쇼로 처리했습니다. (−30점)");
+                  }}
                 >
                   노쇼
                 </button>
               </span>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 
