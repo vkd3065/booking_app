@@ -94,9 +94,11 @@ export default function Booking({
 
   const resource = resources.find((r) => r.id === resourceId);
 
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useCallback((text: string, ok = false) => {
     setToast({ text, ok });
-    setTimeout(() => setToast(null), 4000);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
   }, []);
 
   // 예약된 시간
@@ -153,6 +155,16 @@ export default function Booking({
   useEffect(() => {
     pendingRef.current = pending;
   }, [pending]);
+
+  // Esc로 확인 창 닫기 (대기 취소)
+  useEffect(() => {
+    if (!pending) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cancelHold();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pending, cancelHold]);
 
   // 60초 카운트다운, 끝나면 대기 자동 취소
   useEffect(() => {
@@ -331,7 +343,7 @@ export default function Booking({
       </div>
 
       {/* 날짜 */}
-      <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {days.map((d) => (
           <button
             key={d}
@@ -414,8 +426,14 @@ export default function Booking({
 
       {/* 예약 확인 창 (떠 있는 동안은 예약 대기 상태) */}
       {pending && (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded bg-white p-5 text-sm shadow-lg">
+        <div
+          className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => cancelHold()}
+        >
+          <div
+            className="w-full max-w-sm rounded bg-white p-5 text-sm shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
             <p className="text-base font-semibold">
               {resources.find((x) => x.id === pending.resourceId)?.name} / {label(pending.slot)}
             </p>
