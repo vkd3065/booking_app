@@ -77,7 +77,7 @@ export default function Booking({
 
   const days = useMemo(
     () =>
-      Array.from({ length: grade.days }, (_, i) => kstDate(new Date(now + i * 86400000))),
+      Array.from({ length: grade.days || 7 }, (_, i) => kstDate(new Date(now + i * 86400000))),
     [now, grade.days]
   );
 
@@ -297,8 +297,6 @@ export default function Booking({
       )}
 
       {/* 예약 대상 */}
-      {!suspended && (
-      <>
       <div className="mt-4 flex flex-wrap gap-2">
         {resources.map((r) => (
           <button
@@ -340,7 +338,7 @@ export default function Booking({
           const isPast = new Date(slot).getTime() <= now;
           const isMine = mine.some((m) => m.resource_id === resourceId && sameTime(m.slot, slot));
           const isTaken = taken.some((t) => sameTime(t, slot));
-          const disabled = isPast || isTaken || busySlot !== null;
+          const disabled = suspended || isPast || isTaken || busySlot !== null;
           return (
             <button
               key={h}
@@ -349,22 +347,20 @@ export default function Booking({
               className={`rounded border py-3 text-sm ${
                 isMine
                   ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : isTaken || isPast
+                  : isTaken || isPast || suspended
                   ? "bg-gray-100 text-gray-400"
                   : "hover:bg-gray-50"
               }`}
             >
               {h}:00
               <div className="text-xs">
-                {isMine ? "내 예약" : isTaken ? "예약됨" : isPast ? "지남" : busySlot === slot ? "..." : "가능"}
+                {isMine ? "내 예약" : isTaken ? "예약됨" : isPast ? "지남" : suspended ? "제한" : busySlot === slot ? "..." : "가능"}
               </div>
             </button>
           );
         })}
       </div>
 
-      </>
-      )}
 
       {/* 내 예약 */}
       <h2 className="mt-8 font-semibold">내 예약</h2>

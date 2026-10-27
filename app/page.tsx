@@ -30,7 +30,9 @@ export default async function Home() {
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">예약 시스템</h1>
+        <h1 className="text-2xl font-bold">
+          <Link href="/">예약 시스템</Link>
+        </h1>
         <div className="flex items-center gap-3 text-sm">
           <span>
             {profile?.name ?? "회원"} 님 (신용 점수 {score} / {gradeOf(score).name} 등급)
