@@ -270,6 +270,8 @@ export default function Booking({
 
   // 예약 제한 상태 (점수 50 미만)
   const suspended = grade.max === 0;
+  // 동시에 잡을 수 있는 예약 수를 다 썼는지
+  const full = !suspended && mine.length >= grade.max;
   const suspendedDay = suspendedUntil
     ? new Date(suspendedUntil).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" })
     : null;
@@ -290,10 +292,18 @@ export default function Booking({
           {suspendedDay && ` ${suspendedDay}부터 다시 예약할 수 있어요.`}
         </div>
       ) : (
-        <p className="text-sm text-gray-500">
-          {grade.name} 등급: {grade.days}일 이내 예약, 동시 {grade.max}건, 무료 취소는{" "}
-          {grade.cancelHours}시간 전까지
-        </p>
+        <>
+          <p className="text-sm text-gray-500">
+            {grade.name} 등급: {grade.days}일 이내 예약, 동시 {grade.max}건, 무료 취소는{" "}
+            {grade.cancelHours}시간 전까지 (현재 {mine.length}/{grade.max}건 사용 중)
+          </p>
+          {full && (
+            <p className="mt-2 rounded border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
+              동시에 잡을 수 있는 예약 {grade.max}건을 모두 쓰고 있어요. 기존 예약을 취소하거나
+              방문한 뒤에 새로 예약할 수 있어요.
+            </p>
+          )}
+        </>
       )}
 
       {/* 예약 대상 */}
@@ -338,7 +348,7 @@ export default function Booking({
           const isPast = new Date(slot).getTime() <= now;
           const isMine = mine.some((m) => m.resource_id === resourceId && sameTime(m.slot, slot));
           const isTaken = taken.some((t) => sameTime(t, slot));
-          const disabled = suspended || isPast || isTaken || busySlot !== null;
+          const disabled = suspended || full || isPast || isTaken || busySlot !== null;
           return (
             <button
               key={h}
@@ -347,14 +357,14 @@ export default function Booking({
               className={`rounded border py-3 text-sm ${
                 isMine
                   ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : isTaken || isPast || suspended
+                  : isTaken || isPast || suspended || full
                   ? "bg-gray-100 text-gray-400"
                   : "hover:bg-gray-50"
               }`}
             >
               {h}:00
               <div className="text-xs">
-                {isMine ? "내 예약" : isTaken ? "예약됨" : isPast ? "지남" : suspended ? "제한" : busySlot === slot ? "..." : "가능"}
+                {isMine ? "내 예약" : isTaken ? "예약됨" : isPast ? "지남" : suspended ? "제한" : full ? "한도" : busySlot === slot ? "..." : "가능"}
               </div>
             </button>
           );
