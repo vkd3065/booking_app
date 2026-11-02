@@ -318,6 +318,11 @@ export default function Booking({
             {grade.name} 등급: {grade.days}일 이내 예약, 동시 {grade.max}건, 무료 취소는{" "}
             {grade.cancelHours}시간 전까지 (현재 {mine.length}/{grade.max}건 사용 중)
           </p>
+          {score < 100 && (
+            <p className="mt-1 text-xs text-gray-500">
+              점수는 매월 1일 5점씩 회복돼요. (100점까지)
+            </p>
+          )}
           {full && (
             <p className="mt-2 rounded border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
               동시에 잡을 수 있는 예약 {grade.max}건을 모두 쓰고 있어요. 기존 예약을 취소하거나
