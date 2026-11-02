@@ -49,6 +49,7 @@ const ERRORS: Record<string, string> = {
   TOO_FAR: "등급 기준 예약 가능 기간을 넘는 시간입니다.",
   LIMIT_RESERVATIONS: "동시에 잡을 수 있는 예약 수를 모두 쓰고 있어요.",
   SUSPENDED: "점수가 낮아 예약이 제한된 상태입니다.",
+  PEAK_LIMIT: "주의 등급은 인기 시간대를 예약할 수 없어요.",
   WAIT_TURN: "먼저 누른 분이 아직 결정 중이에요. 그분이 취소하면 예약할 수 있어요.",
 };
 function toMessage(raw: string) {
@@ -85,6 +86,7 @@ export default function Booking({
   const [day, setDay] = useState(days[0]);
   const [taken, setTaken] = useState<string[]>([]);
   const [held, setHeld] = useState<string[]>([]); // 다른 사람이 결정 중인 시간
+  const [peaks, setPeaks] = useState<{ weekday: number; hour: number }[]>([]); // 인기 시간대
   const [mine, setMine] = useState<MyReservation[]>([]);
   const [busySlot, setBusySlot] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
@@ -115,6 +117,18 @@ export default function Booking({
     });
     setHeld((h as string[] | null) ?? []);
   }, [supabase, resourceId, day]);
+
+  // 인기 시간대 (자원별)
+  useEffect(() => {
+    if (!resourceId) return;
+    supabase
+      .from("peak_hours")
+      .select("weekday, hour")
+      .eq("resource_id", resourceId)
+      .then(({ data }) => setPeaks(data ?? []));
+  }, [supabase, resourceId]);
+  const weekday = new Date(day + "T12:00:00+09:00").getUTCDay();
+  const isPeakHour = (h: number) => peaks.some((p) => p.weekday === weekday && p.hour === h);
 
   // 내 예약
   const loadMine = useCallback(async () => {
@@ -316,7 +330,7 @@ export default function Booking({
         <>
           <p className="text-sm text-gray-500">
             {grade.name} 등급: {grade.days}일 이내 예약, 동시 {grade.max}건, 무료 취소는{" "}
-            {grade.cancelHours}시간 전까지 (현재 {mine.length}/{grade.max}건 사용 중)
+            {grade.cancelHours}시간 전까지{!grade.peak && ", 인기 시간대 불가"} (현재 {mine.length}/{grade.max}건 사용 중)
           </p>
           {score < 100 && (
             <p className="mt-1 text-xs text-gray-500">
@@ -375,7 +389,9 @@ export default function Booking({
           const isMine = mine.some((m) => m.resource_id === resourceId && sameTime(m.slot, slot));
           const isTaken = taken.some((t) => sameTime(t, slot));
           const isHeld = !isTaken && held.some((t) => sameTime(t, slot));
-          const disabled = suspended || full || isPast || isTaken || busySlot !== null;
+          const isPeak = isPeakHour(h);
+          const peakBlocked = isPeak && !grade.peak;
+          const disabled = suspended || full || isPast || isTaken || peakBlocked || busySlot !== null;
           return (
             <button
               key={h}
@@ -384,7 +400,7 @@ export default function Booking({
               className={`rounded border py-3 text-sm ${
                 isMine
                   ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : isTaken || isPast || suspended || full
+                  : isTaken || isPast || suspended || full || peakBlocked
                   ? "bg-gray-100 text-gray-400"
                   : isHeld
                   ? "border-yellow-400 bg-yellow-50 text-yellow-800"
@@ -393,7 +409,7 @@ export default function Booking({
             >
               {h}:00
               <div className="text-xs">
-                {isMine ? "내 예약" : isTaken ? "예약됨" : isPast ? "지남" : suspended ? "제한" : full ? "한도" : busySlot === slot ? "..." : isHeld ? "다른 분이 결정 중" : "가능"}
+                {isMine ? "내 예약" : isTaken ? "예약됨" : isPast ? "지남" : suspended ? "제한" : full ? "한도" : peakBlocked ? "인기 시간" : busySlot === slot ? "..." : isHeld ? "다른 분이 결정 중" : isPeak ? "가능 (인기)" : "가능"}
               </div>
             </button>
           );
