@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import Admin from "./admin";
+import PeakHours from "./peak";
 
 export default async function AdminPage() {
   const supabase = await createClient();
@@ -25,6 +26,11 @@ export default async function AdminPage() {
     );
   }
 
+  const { data: resources } = await supabase
+    .from("resources")
+    .select("id, name, open_hour, close_hour")
+    .order("id");
+
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8">
       <header className="flex items-center justify-between">
@@ -34,6 +40,7 @@ export default async function AdminPage() {
         </Link>
       </header>
       <Admin />
+      <PeakHours resources={resources ?? []} />
     </main>
   );
 }
