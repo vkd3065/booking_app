@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import Admin from "./admin";
 import PeakHours from "./peak";
+import Overview from "./overview";
 
 export default async function AdminPage() {
   const supabase = await createClient();
@@ -39,6 +40,7 @@ export default async function AdminPage() {
           예약 화면으로
         </Link>
       </header>
+      <Overview resources={resources ?? []} />
       <Admin />
       <PeakHours resources={resources ?? []} />
     </main>
