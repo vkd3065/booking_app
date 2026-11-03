@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import Admin from "./admin";
 import PeakHours from "./peak";
 import Overview from "./overview";
+import Members from "./members";
 
 export default async function AdminPage() {
   const supabase = await createClient();
@@ -43,6 +44,7 @@ export default async function AdminPage() {
       <Overview resources={resources ?? []} />
       <Admin />
       <PeakHours resources={resources ?? []} />
+      <Members />
     </main>
   );
 }
