@@ -51,7 +51,7 @@ export default function PeakHours({ resources }: { resources: Resource[] }) {
   }
 
   return (
-    <div className="mt-10">
+    <div className="mt-6">
       <h2 className="font-semibold">인기 시간대 설정</h2>
       <p className="mt-1 text-xs text-gray-500">
         칸을 누르면 인기 시간대로 지정되고, 다시 누르면 해제됩니다. 주의 등급 회원은 인기 시간대를
