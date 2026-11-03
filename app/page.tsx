@@ -37,6 +37,9 @@ export default async function Home() {
           <span>
             {profile?.name ?? "회원"} 님 (신용 점수 {score} / {gradeOf(score).name} 등급)
           </span>
+          <Link href="/history" className="rounded border px-2 py-1">
+            점수 내역
+          </Link>
           {profile?.is_admin && (
             <Link href="/admin" className="rounded border px-2 py-1">
               관리자
