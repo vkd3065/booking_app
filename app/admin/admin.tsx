@@ -78,79 +78,122 @@ export default function Admin() {
   }
 
   return (
-    <div className="mt-6">
-      <h2 className="font-semibold">판정 대기 (시작 시각이 지난 예약)</h2>
-      <p className="mt-1 text-xs text-gray-500">
-        방문 +5점 / 노쇼 −30점 (예약 시각 15분 경과까지 미방문이면 노쇼)
+    <div>
+      <h3 className="font-bold">판정 대기 <span className="num text-pine">{pending.length}</span></h3>
+      <p className="mt-1 text-xs text-sub">
+        ※ 시작 시각이 지난 예약입니다. 방문 +5점, 노쇼 −30점 (노쇼는 예약 시각 15분 경과 후 판정)
       </p>
-      {pending.length === 0 ? (
-        <p className="mt-2 text-sm text-gray-500">판정할 예약이 없습니다.</p>
-      ) : (
-        <ul className="mt-2 divide-y rounded border">
-          {pending.map((r) => {
-            const passed = Math.floor((now - new Date(r.slot).getTime()) / 60000);
-            const canNoShow = passed >= NO_SHOW_MINUTES;
-            return (
-            <li key={r.id} className="flex items-center justify-between px-3 py-2 text-sm">
-              <span>
-                {label(r.slot)} / {r.resources?.name} / {r.profiles?.name ?? "회원"} (점수{" "}
-                {r.profiles?.score})
-                <span className="ml-2 text-xs text-gray-500">
-                  {passed < 60 ? `${passed}분 경과` : `${Math.floor(passed / 60)}시간 경과`}
-                  {!canNoShow && `, ${NO_SHOW_MINUTES - passed}분 뒤 노쇼 판정 가능`}
-                </span>
-              </span>
-              <span className="flex gap-2">
-                <button
-                  disabled={busy}
-                  className="rounded border px-2 py-1"
-                  onClick={() => run("mark_visit", r.id, "방문으로 처리했습니다. (+5점)")}
-                >
-                  방문
-                </button>
-                <button
-                  disabled={busy || !canNoShow}
-                  className="rounded border border-red-300 px-2 py-1 text-red-600 disabled:opacity-40"
-                  onClick={() => {
-                    if (!confirm(`${r.profiles?.name ?? "회원"} 님 ${label(r.slot)} 예약을 노쇼로 처리할까요?\n신용 점수가 30점 깎여요.`)) return;
-                    run("mark_no_show", r.id, "노쇼로 처리했습니다. (−30점)");
-                  }}
-                >
-                  노쇼
-                </button>
-              </span>
-            </li>
-            );
-          })}
-        </ul>
-      )}
+      <div className="mt-2 overflow-x-auto">
+        <table className="list num">
+          <thead>
+            <tr>
+              <th>예약 시각</th>
+              <th>대상</th>
+              <th>회원</th>
+              <th>점수</th>
+              <th>경과</th>
+              <th className="w-36">판정</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pending.length === 0 && (
+              <tr>
+                <td colSpan={6} className="!py-8 text-center text-sub">
+                  판정할 예약이 없습니다.
+                </td>
+              </tr>
+            )}
+            {pending.map((r) => {
+              const passed = Math.floor((now - new Date(r.slot).getTime()) / 60000);
+              const canNoShow = passed >= NO_SHOW_MINUTES;
+              return (
+                <tr key={r.id}>
+                  <td>{label(r.slot)}</td>
+                  <td>{r.resources?.name}</td>
+                  <td>{r.profiles?.name ?? "회원"}</td>
+                  <td>{r.profiles?.score}</td>
+                  <td className="text-sub">
+                    {passed < 60 ? `${passed}분` : `${Math.floor(passed / 60)}시간`}
+                    {!canNoShow && <span className="block text-xs">{NO_SHOW_MINUTES - passed}분 뒤 노쇼 가능</span>}
+                  </td>
+                  <td>
+                    <span className="flex gap-1.5">
+                      <button
+                        disabled={busy}
+                        className="btn btn-main"
+                        onClick={() => run("mark_visit", r.id, "방문으로 처리했습니다. (+5점)")}
+                      >
+                        방문
+                      </button>
+                      <button
+                        disabled={busy || !canNoShow}
+                        className="btn enabled:border-stop enabled:text-stop"
+                        onClick={() => {
+                          if (!confirm(`${r.profiles?.name ?? "회원"} 님 ${label(r.slot)} 예약을 노쇼로 처리하시겠습니까?\n신용 점수 30점이 차감됩니다.`)) return;
+                          run("mark_no_show", r.id, "노쇼로 처리했습니다. (−30점)");
+                        }}
+                      >
+                        노쇼
+                      </button>
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
-      <h2 className="mt-8 font-semibold">최근 판정</h2>
-      {decided.length === 0 ? (
-        <p className="mt-2 text-sm text-gray-500">판정한 예약이 없습니다.</p>
-      ) : (
-        <ul className="mt-2 divide-y rounded border">
-          {decided.map((r) => (
-            <li key={r.id} className="flex items-center justify-between px-3 py-2 text-sm">
-              <span>
-                {label(r.slot)} / {r.resources?.name} / {r.profiles?.name ?? "회원"} /{" "}
-                {STATUS_LABEL[r.status]} ({r.score_delta > 0 ? "+" : ""}
-                {r.score_delta}점)
-              </span>
-              <button
-                disabled={busy}
-                className="text-gray-600 underline"
-                onClick={() => run("undo_decision", r.id, "판정을 취소하고 점수를 되돌렸습니다.")}
-              >
-                판정 취소
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <h3 className="mt-8 font-bold">최근 판정</h3>
+      <div className="mt-2 overflow-x-auto">
+        <table className="list num">
+          <thead>
+            <tr>
+              <th>예약 시각</th>
+              <th>대상</th>
+              <th>회원</th>
+              <th>판정</th>
+              <th>반영 점수</th>
+              <th className="w-28">취소</th>
+            </tr>
+          </thead>
+          <tbody>
+            {decided.length === 0 && (
+              <tr>
+                <td colSpan={6} className="!py-8 text-center text-sub">
+                  판정한 예약이 없습니다.
+                </td>
+              </tr>
+            )}
+            {decided.map((r) => (
+              <tr key={r.id}>
+                <td>{label(r.slot)}</td>
+                <td>{r.resources?.name}</td>
+                <td>{r.profiles?.name ?? "회원"}</td>
+                <td className={r.status === "no_show" ? "font-semibold text-stop" : "font-semibold text-pine"}>
+                  {STATUS_LABEL[r.status]}
+                </td>
+                <td>
+                  {r.score_delta > 0 ? "+" : ""}
+                  {r.score_delta}점
+                </td>
+                <td>
+                  <button
+                    disabled={busy}
+                    className="btn"
+                    onClick={() => run("undo_decision", r.id, "판정을 취소하고 점수를 되돌렸습니다.")}
+                  >
+                    판정 취소
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {msg && (
-        <div className="fixed bottom-6 left-1/2 w-max max-w-[90vw] -translate-x-1/2 rounded bg-gray-900 px-4 py-3 text-sm text-white shadow">
+        <div className="fixed bottom-6 left-1/2 w-max max-w-[90vw] -translate-x-1/2 bg-ink px-5 py-3 text-sm text-white shadow-lg">
           {msg}
         </div>
       )}

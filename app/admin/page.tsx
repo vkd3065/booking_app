@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import SiteHeader from "../site-header";
 import Tabs from "./tabs";
 
 export default async function AdminPage() {
@@ -16,12 +17,17 @@ export default async function AdminPage() {
 
   if (!profile?.is_admin) {
     return (
-      <main className="mx-auto w-full max-w-3xl px-4 py-8">
-        <p>관리자만 들어올 수 있는 화면입니다.</p>
-        <Link href="/" className="mt-4 inline-block rounded border px-3 py-1 text-sm">
-          예약 화면으로
-        </Link>
-      </main>
+      <>
+        <SiteHeader name={profile?.name ?? "회원"} isAdmin={false} current="admin" />
+        <main className="mx-auto w-full max-w-[1080px] px-4 py-6">
+          <section className="box py-12 text-center">
+            <p>관리자만 이용할 수 있는 화면입니다.</p>
+            <Link href="/" className="btn mt-4 inline-block">
+              예약 화면으로
+            </Link>
+          </section>
+        </main>
+      </>
     );
   }
 
@@ -31,14 +37,11 @@ export default async function AdminPage() {
     .order("id");
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">관리자</h1>
-        <Link href="/" className="rounded border px-2 py-1 text-sm">
-          예약 화면으로
-        </Link>
-      </header>
-      <Tabs resources={resources ?? []} />
-    </main>
+    <>
+      <SiteHeader name={profile.name ?? "관리자"} isAdmin current="admin" />
+      <main className="mx-auto w-full max-w-[1080px] px-4 py-6">
+        <Tabs resources={resources ?? []} />
+      </main>
+    </>
   );
 }

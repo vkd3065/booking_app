@@ -13,10 +13,10 @@ type Member = {
 };
 
 const GRADE_CLS: Record<string, string> = {
-  우수: "text-blue-700",
-  일반: "text-gray-700",
-  주의: "text-yellow-700",
-  제한: "text-red-600",
+  우수: "text-top",
+  일반: "text-pine",
+  주의: "text-warn",
+  제한: "text-stop",
 };
 
 function dayLabel(t: string) {
@@ -45,8 +45,8 @@ export default function Members() {
   const byGrade = (g: string) => members.filter((m) => gradeOf(m.score).name === g).length;
 
   return (
-    <div className="mt-6">
-      <p className="text-sm text-gray-600">
+    <div>
+      <p className="text-sm text-sub">
         전체 {members.length}명 (우수 {byGrade("우수")}, 일반 {byGrade("일반")}, 주의 {byGrade("주의")}, 제한{" "}
         {byGrade("제한")})
       </p>
@@ -56,12 +56,12 @@ export default function Members() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="이름 검색"
-          className="rounded border px-2 py-1 text-sm"
+          className="field px-3 py-1.5 text-sm"
         />
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as "low" | "high" | "new")}
-          className="rounded border px-2 py-1 text-sm"
+          className="field px-3 py-1.5 text-sm"
         >
           <option value="low">점수 낮은 순</option>
           <option value="high">점수 높은 순</option>
@@ -69,13 +69,13 @@ export default function Members() {
         </select>
       </div>
 
-      <table className="mt-3 w-full border-collapse text-sm">
+      <table className="list num mt-3">
         <thead>
-          <tr className="text-left text-gray-500">
-            <th className="border-b border-gray-200 px-2 py-1 font-normal">이름</th>
-            <th className="border-b border-gray-200 px-2 py-1 font-normal">점수</th>
-            <th className="border-b border-gray-200 px-2 py-1 font-normal">등급</th>
-            <th className="border-b border-gray-200 px-2 py-1 font-normal">비고</th>
+          <tr>
+            <th>이름</th>
+            <th>점수</th>
+            <th>등급</th>
+            <th>비고</th>
           </tr>
         </thead>
         <tbody>
@@ -83,10 +83,10 @@ export default function Members() {
             const g = gradeOf(m.score).name;
             return (
               <tr key={m.id}>
-                <td className="border-b border-gray-200 px-2 py-1">{m.name ?? "회원"}</td>
-                <td className="border-b border-gray-200 px-2 py-1">{m.score}</td>
-                <td className={`border-b border-gray-200 px-2 py-1 ${GRADE_CLS[g]}`}>{g}</td>
-                <td className="border-b border-gray-200 px-2 py-1 text-xs text-gray-500">
+                <td>{m.name ?? "회원"}</td>
+                <td>{m.score}</td>
+                <td className={`font-semibold ${GRADE_CLS[g]}`}>{g}</td>
+                <td className="text-xs text-sub">
                   {m.suspended_until
                     ? `${dayLabel(m.suspended_until)}까지 예약 제한`
                     : `${dayLabel(m.created_at)} 가입`}
@@ -96,7 +96,7 @@ export default function Members() {
           })}
         </tbody>
       </table>
-      {list.length === 0 && <p className="mt-2 text-sm text-gray-500">회원이 없습니다.</p>}
+      {list.length === 0 && <p className="mt-2 text-sm text-sub">회원이 없습니다.</p>}
     </div>
   );
 }

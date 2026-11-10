@@ -13,11 +13,11 @@ type Row = {
 };
 
 const STATUS: Record<string, { text: string; cls: string }> = {
-  booked: { text: "예약됨", cls: "bg-blue-50 text-blue-700" },
-  done: { text: "방문", cls: "bg-green-50 text-green-700" },
-  no_show: { text: "노쇼", cls: "bg-red-50 text-red-700" },
-  canceled: { text: "취소", cls: "bg-gray-100 text-gray-500" },
-  canceled_late: { text: "늦은 취소", cls: "bg-yellow-50 text-yellow-800" },
+  booked: { text: "예약됨", cls: "bg-pine-wash text-pine-deep" },
+  done: { text: "방문", cls: "bg-top-wash text-top" },
+  no_show: { text: "노쇼", cls: "bg-stop-wash text-stop" },
+  canceled: { text: "취소", cls: "bg-wash text-sub" },
+  canceled_late: { text: "늦은 취소", cls: "bg-warn-wash text-warn" },
 };
 
 function kstDate(d: Date) {
@@ -59,41 +59,41 @@ export default function Overview({ resources }: { resources: Resource[] }) {
   const count = (s: string) => rows.filter((r) => r.status === s).length;
 
   return (
-    <div className="mt-6">
+    <div>
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={() => setDay(addDays(day, -1))} className="rounded border px-2 py-1 text-sm">
-          ◀
+        <button onClick={() => setDay(addDays(day, -1))} className="btn px-2.5 py-1">
+          &lt;
         </button>
         <input
           type="date"
           value={day}
           onChange={(e) => e.target.value && setDay(e.target.value)}
-          className="rounded border px-2 py-1 text-sm"
+          className="field px-2 py-1 text-sm"
         />
-        <button onClick={() => setDay(addDays(day, 1))} className="rounded border px-2 py-1 text-sm">
-          ▶
+        <button onClick={() => setDay(addDays(day, 1))} className="btn px-2.5 py-1">
+          &gt;
         </button>
-        <button onClick={() => setDay(kstDate(new Date()))} className="rounded border px-2 py-1 text-sm">
+        <button onClick={() => setDay(kstDate(new Date()))} className="btn px-2.5 py-1">
           오늘
         </button>
-        <label className="ml-auto flex items-center gap-1 text-sm text-gray-600">
+        <label className="ml-auto flex items-center gap-1 text-sm text-sub">
           <input type="checkbox" checked={showCanceled} onChange={(e) => setShowCanceled(e.target.checked)} />
           취소 포함
         </label>
       </div>
 
-      <p className="mt-2 text-sm text-gray-600">
+      <p className="mt-2 text-sm text-sub">
         예약됨 {count("booked")}건, 방문 {count("done")}건, 노쇼 {count("no_show")}건, 취소{" "}
         {count("canceled") + count("canceled_late")}건
       </p>
 
       <div className="mt-3 overflow-x-auto">
-        <table className="w-full min-w-max border-collapse text-sm">
+        <table className="list num min-w-max">
           <thead>
             <tr>
-              <th className="w-16 border border-gray-200 px-2 py-1 font-normal text-gray-500">시간</th>
+              <th className="w-16 !text-center">시간</th>
               {resources.map((r) => (
-                <th key={r.id} className="border border-gray-200 px-2 py-1">
+                <th key={r.id} className="border-l border-line">
                   {r.name}
                 </th>
               ))}
@@ -102,15 +102,18 @@ export default function Overview({ resources }: { resources: Resource[] }) {
           <tbody>
             {hours.map((h) => (
               <tr key={h}>
-                <td className="border border-gray-200 px-2 py-1 text-center text-gray-500">{h}:00</td>
+                <td className="text-center text-sub">{h}:00</td>
                 {resources.map((res) => {
                   const cell = visible.filter((r) => r.resource_id === res.id && hourOf(r.slot) === h);
                   const closed = h < res.open_hour || h >= res.close_hour;
                   return (
-                    <td key={res.id} className={`border border-gray-200 px-2 py-1 align-top ${closed ? "bg-gray-50" : ""}`}>
+                    <td key={res.id} className={`border-l border-line !py-1 align-top ${closed ? "bg-wash" : ""}`}>
                       {cell.map((r) => (
-                        <div key={r.id} className={`my-0.5 rounded px-2 py-0.5 ${STATUS[r.status]?.cls}`}>
-                          {r.profiles?.name ?? "회원"} ({r.profiles?.score}점) {STATUS[r.status]?.text}
+                        <div key={r.id} className={`flex justify-between gap-2 px-2 py-1 ${STATUS[r.status]?.cls}`}>
+                          <span>
+                            {r.profiles?.name ?? "회원"} <span className="text-xs opacity-70">{r.profiles?.score}점</span>
+                          </span>
+                          <span className="text-xs font-semibold">{STATUS[r.status]?.text}</span>
                         </div>
                       ))}
                     </td>

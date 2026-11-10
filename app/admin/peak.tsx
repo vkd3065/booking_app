@@ -51,19 +51,18 @@ export default function PeakHours({ resources }: { resources: Resource[] }) {
   }
 
   return (
-    <div className="mt-6">
-      <h2 className="font-semibold">인기 시간대 설정</h2>
-      <p className="mt-1 text-xs text-gray-500">
-        칸을 누르면 인기 시간대로 지정되고, 다시 누르면 해제됩니다. 주의 등급 회원은 인기 시간대를
-        예약할 수 없습니다.
+    <div>
+      <p className="text-xs leading-5 text-sub">
+        ※ 칸을 누르면 인기 시간대로 지정되고, 다시 누르면 해제됩니다.
+        <br />※ 주의 등급 회원은 인기 시간대를 예약할 수 없습니다.
       </p>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="seg mt-3 pl-px">
         {resources.map((r) => (
           <button
             key={r.id}
+            aria-pressed={r.id === resourceId}
             onClick={() => setResourceId(r.id)}
-            className={`rounded border px-3 py-1 text-sm ${r.id === resourceId ? "bg-gray-900 text-white" : ""}`}
           >
             {r.name}
           </button>
@@ -71,7 +70,7 @@ export default function PeakHours({ resources }: { resources: Resource[] }) {
       </div>
 
       <div className="mt-3 overflow-x-auto">
-        <table className="text-center text-xs">
+        <table className="num text-center text-xs">
           <thead>
             <tr>
               <th className="px-1"></th>
@@ -85,14 +84,14 @@ export default function PeakHours({ resources }: { resources: Resource[] }) {
           <tbody>
             {hours.map((h) => (
               <tr key={h}>
-                <td className="pr-2 text-right text-gray-500">{h}:00</td>
+                <td className="pr-2 text-right text-sub">{h}:00</td>
                 {WEEKDAYS.map((_, w) => (
                   <td key={w} className="p-0.5">
                     <button
                       disabled={busy}
                       onClick={() => toggle(w, h)}
-                      className={`h-7 w-10 rounded border ${
-                        isPeak(w, h) ? "border-orange-400 bg-orange-100 text-orange-700" : "hover:bg-gray-50"
+                      className={`h-7 w-11 border text-[11px] font-semibold ${
+                        isPeak(w, h) ? "border-warn bg-warn-wash text-warn" : "border-line hover:border-sub"
                       }`}
                     >
                       {isPeak(w, h) ? "인기" : ""}
@@ -105,7 +104,7 @@ export default function PeakHours({ resources }: { resources: Resource[] }) {
         </table>
       </div>
 
-      {msg && <p className="mt-2 text-sm text-red-600">{msg}</p>}
+      {msg && <p className="mt-2 text-sm text-stop">{msg}</p>}
     </div>
   );
 }
