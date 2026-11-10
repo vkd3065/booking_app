@@ -1,20 +1,159 @@
 @import "tailwindcss";
 
+@theme {
+  --color-ink: #222;
+  --color-sub: #6b7178;
+  --color-line: #d9dce0;
+  --color-wash: #f4f5f6;
+  --color-pine: #0b6b57;
+  --color-pine-deep: #095244;
+  --color-pine-wash: #e5f1ee;
+  /* 등급 색 */
+  --color-top: #1d4f91;
+  --color-top-wash: #e6edf7;
+  --color-warn: #c05a00;
+  --color-warn-wash: #fff4e2;
+  --color-stop: #c62828;
+  --color-stop-wash: #fdeaea;
+  --font-sans: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
   color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+body {
+  background: var(--color-wash);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  word-break: keep-all;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--color-pine);
+  outline-offset: 1px;
+}
+
+/* 흰 내용 상자 */
+.box {
+  background: #fff;
+  border: 1px solid var(--color-line);
+  padding: 20px;
+}
+/* 상자 제목 */
+.tit {
+  font-size: 16px;
+  font-weight: 700;
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+  border-bottom: 2px solid var(--color-ink);
+}
+
+/* 버튼 */
+.btn {
+  border: 1px solid #b9bec4;
+  border-radius: 2px;
+  padding: 5px 12px;
+  font-size: 14px;
+  background: #fff;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--color-ink);
+}
+.btn:disabled {
+  color: #aaa;
+  background: var(--color-wash);
+}
+.btn-main {
+  border-color: var(--color-pine);
+  background: var(--color-pine);
+  color: #fff;
+  font-weight: 600;
+}
+.btn-main:hover:not(:disabled) {
+  background: var(--color-pine-deep);
+  border-color: var(--color-pine-deep);
+}
+.btn-main:disabled {
+  color: #fff;
+  background: var(--color-pine);
+  opacity: 0.5;
+}
+
+/* 붙어 있는 선택 버튼 (예약 대상, 기간) */
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+}
+.seg > button {
+  border: 1px solid #b9bec4;
+  margin-left: -1px;
+  padding: 7px 18px;
+  font-size: 14px;
+  background: #fff;
+}
+.seg > button[aria-pressed="true"] {
+  position: relative;
+  border-color: var(--color-pine);
+  background: var(--color-pine);
+  color: #fff;
+  font-weight: 600;
+}
+
+.field {
+  border: 1px solid #b9bec4;
+  border-radius: 2px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+/* 항목 : 값 표 */
+.info th {
+  width: 7.5em;
+  padding: 9px 0;
+  text-align: left;
+  font-weight: 400;
+  color: var(--color-sub);
+  border-bottom: 1px solid #eceef0;
+  vertical-align: top;
+}
+.info td {
+  padding: 9px 0;
+  font-weight: 600;
+  border-bottom: 1px solid #eceef0;
+}
+
+/* 목록 표 */
+.list {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 2px solid var(--color-ink);
+  font-size: 14px;
+}
+.list th {
+  background: #f7f8f9;
+  padding: 9px 10px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--color-line);
+  text-align: left;
+  white-space: nowrap;
+}
+.list td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #e6e8eb;
+}
+
+/* 예약된 시간 빗금 */
+.hatch {
+  background: repeating-linear-gradient(135deg, #e9ebee 0 5px, #f6f7f8 5px 10px);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
 }
