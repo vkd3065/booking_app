@@ -5,10 +5,11 @@ import Admin from "./admin";
 import Overview from "./overview";
 import Members from "./members";
 import PeakHours from "./peak";
+import StatsView from "./stats";
 
 type Resource = { id: number; name: string; open_hour: number; close_hour: number };
 
-const TABS = ["판정", "예약 현황", "회원", "인기 시간대"] as const;
+const TABS = ["판정", "예약 현황", "회원", "통계", "인기 시간대"] as const;
 
 export default function Tabs({ resources }: { resources: Resource[] }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>("판정");
@@ -31,6 +32,7 @@ export default function Tabs({ resources }: { resources: Resource[] }) {
       {tab === "판정" && <Admin />}
       {tab === "예약 현황" && <Overview resources={resources} />}
       {tab === "회원" && <Members />}
+      {tab === "통계" && <StatsView />}
       {tab === "인기 시간대" && <PeakHours resources={resources} />}
     </>
   );
