@@ -287,8 +287,13 @@ export default function Booking({
   async function cancel(r: MyReservation) {
     // 무료 취소 마감이 지났으면 -15점 경고
     const late = now > new Date(r.slot).getTime() - grade.cancelHours * 3600000;
+    // 깎인 뒤 등급이 내려가면 달라지는 조건도 같이 안내
+    const drop = late ? dropAfter(score, -15) : null;
+    const dropMsg = drop
+      ? `\n\n취소하면 ${Math.max(0, score - 15)}점이 되어 ${drop.name} 등급으로 내려가요.\n(${limitText(drop)})`
+      : "";
     const msg = late
-      ? `${label(r.slot)} 예약은 무료 취소 마감(${grade.cancelHours}시간 전)이 지났어요.\n지금 취소하면 신용 점수가 15점 깎여요. 그래도 취소할까요?`
+      ? `${label(r.slot)} 예약은 무료 취소 마감(${grade.cancelHours}시간 전)이 지났어요.\n지금 취소하면 신용 점수가 15점 깎여요.${dropMsg}\n\n그래도 취소할까요?`
       : `${label(r.slot)} 예약을 취소할까요?`;
     if (!confirm(msg)) return;
     const { error } = await supabase.rpc("cancel_booking", { p_id: r.id });
@@ -446,7 +451,7 @@ export default function Booking({
                 {resources.find((x) => x.id === r.resource_id)?.name} / {label(r.slot)}
                 <span className={`ml-2 text-xs ${late ? "text-red-600" : "text-gray-500"}`}>
                   {late
-                    ? "무료 취소 마감 지남 (취소 시 −15점)"
+                    ? `무료 취소 마감 지남 (취소 시 −15점${dropAfter(score, -15) ? `, ${dropAfter(score, -15)?.name} 등급으로 하락` : ""})`
                     : `무료 취소: ${label(new Date(deadline).toISOString())}까지`}
                 </span>
               </span>
