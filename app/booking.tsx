@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { gradeOf, dropAfter, limitText } from "@/lib/grade";
+import ScoreRuler, { GRADE_TEXT } from "./score-ruler";
+import Calendar from "./calendar";
 
 type Resource = { id: number; name: string; open_hour: number; close_hour: number };
 type MyReservation = { id: number; slot: string; resource_id: number };
@@ -39,7 +41,7 @@ function label(slot: string) {
 }
 
 const ERRORS: Record<string, string> = {
-  SLOT_TAKEN: "방금 다른 분이 먼저 예약했어요. 다른 시간을 골라 주세요.",
+  SLOT_TAKEN: "다른 회원이 먼저 예약한 시간입니다. 다른 시간을 선택해 주세요.",
   PAST_SLOT: "이미 지난 시간입니다.",
   CLOSED_HOUR: "운영 시간이 아닙니다.",
   BAD_SLOT: "잘못된 시간입니다.",
@@ -47,10 +49,10 @@ const ERRORS: Record<string, string> = {
   LOGIN_REQUIRED: "다시 로그인해 주세요.",
   CANNOT_CANCEL: "취소할 수 없는 예약입니다.",
   TOO_FAR: "등급 기준 예약 가능 기간을 넘는 시간입니다.",
-  LIMIT_RESERVATIONS: "동시에 잡을 수 있는 예약 수를 모두 쓰고 있어요.",
+  LIMIT_RESERVATIONS: "동시 예약 가능 건수를 모두 사용 중입니다.",
   SUSPENDED: "점수가 낮아 예약이 제한된 상태입니다.",
-  PEAK_LIMIT: "주의 등급은 인기 시간대를 예약할 수 없어요.",
-  WAIT_TURN: "먼저 누른 분이 아직 결정 중이에요. 그분이 취소하면 예약할 수 있어요.",
+  PEAK_LIMIT: "주의 등급은 인기 시간대를 예약할 수 없습니다.",
+  WAIT_TURN: "먼저 누른 회원이 아직 결정 중입니다. 그 회원이 취소하면 예약할 수 있습니다.",
 };
 function toMessage(raw: string) {
   const key = Object.keys(ERRORS).find((k) => raw.includes(k));
@@ -186,7 +188,7 @@ export default function Booking({
     const t = setInterval(() => {
       const sec = Math.ceil((pending.expiresAt - Date.now()) / 1000);
       setLeft(Math.max(0, sec));
-      if (sec <= 0) cancelHold(`${HOLD_SECONDS}초가 지나 예약 대기가 취소됐어요.`);
+      if (sec <= 0) cancelHold(`${HOLD_SECONDS}초가 지나 예약 대기가 취소되었습니다.`);
     }, 1000);
     return () => clearInterval(t);
   }, [pending, cancelHold]);
@@ -214,7 +216,7 @@ export default function Booking({
                 const ahead = (data as number) ?? 0;
                 setPending((cur) =>
                   cur && cur.slot === p.slot
-                    ? { ...cur, ahead, note: ahead === 0 ? "먼저 누른 분이 취소했어요. 이제 확인을 누르면 예약돼요." : cur.note }
+                    ? { ...cur, ahead, note: ahead === 0 ? "먼저 누른 회원이 취소했습니다. 지금 예약하기를 누르면 예약됩니다." : cur.note }
                     : cur
                 );
               });
@@ -223,7 +225,7 @@ export default function Booking({
         }
         // 보고 있는 날짜면 알림
         if (payload?.type === "booked" && kstDate(new Date(payload.slot)) === day) {
-          showToast(`${label(payload.slot)}가 방금 다른 분에게 예약되었습니다.`);
+          showToast(`${label(payload.slot)}은 방금 다른 회원이 예약했습니다.`);
         }
       })
       .subscribe();
@@ -276,7 +278,7 @@ export default function Booking({
       showToast(toMessage(error.message));
     } else {
       setPending(null);
-      showToast(`${label(p.slot)} 예약 완료`, true);
+      showToast(`${label(p.slot)} 예약이 완료되었습니다.`, true);
       supabase.channel(`slots-${p.resourceId}`).httpSend("changed", { type: "booked", slot: p.slot, from: TAB_ID });
     }
     loadTaken();
@@ -290,17 +292,17 @@ export default function Booking({
     // 깎인 뒤 등급이 내려가면 달라지는 조건도 같이 안내
     const drop = late ? dropAfter(score, -15) : null;
     const dropMsg = drop
-      ? `\n\n취소하면 ${Math.max(0, score - 15)}점이 되어 ${drop.name} 등급으로 내려가요.\n(${limitText(drop)})`
+      ? `\n\n취소하면 ${Math.max(0, score - 15)}점이 되어 ${drop.name} 등급으로 내려갑니다.\n(${limitText(drop)})`
       : "";
     const msg = late
-      ? `${label(r.slot)} 예약은 무료 취소 마감(${grade.cancelHours}시간 전)이 지났어요.\n지금 취소하면 신용 점수가 15점 깎여요.${dropMsg}\n\n그래도 취소할까요?`
-      : `${label(r.slot)} 예약을 취소할까요?`;
+      ? `${label(r.slot)} 예약은 무료 취소 마감(${grade.cancelHours}시간 전)이 지났습니다.\n지금 취소하면 신용 점수 15점이 차감됩니다.${dropMsg}\n\n그래도 취소하시겠습니까?`
+      : `${label(r.slot)} 예약을 취소하시겠습니까?`;
     if (!confirm(msg)) return;
     const { error } = await supabase.rpc("cancel_booking", { p_id: r.id });
     if (error) {
       showToast(toMessage(error.message));
     } else {
-      showToast("취소했습니다.", true);
+      showToast("예약이 취소되었습니다.", true);
       await supabase.channel(`slots-${r.resource_id}`).httpSend("changed", { type: "canceled", slot: r.slot, from: TAB_ID });
       router.refresh();
     }
@@ -316,6 +318,15 @@ export default function Booking({
     ? new Date(suspendedUntil).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" })
     : null;
 
+  // 늦은 취소(-15), 노쇼(-30)를 하면 등급이 내려가는지
+  const lateDrop = dropAfter(score, -15);
+  const noShowDrop = dropAfter(score, -30);
+  const dropTo = lateDrop ?? noShowDrop;
+  const dropMarks = [
+    ...(lateDrop ? [{ value: score - 15, label: "−15" }] : []),
+    ...(noShowDrop ? [{ value: score - 30, label: "−30" }] : []),
+  ];
+
   const hours = resource
     ? Array.from(
         { length: resource.close_hour - resource.open_hour },
@@ -323,186 +334,225 @@ export default function Booking({
       )
     : [];
 
+  const dayDate = new Date(day + "T12:00:00+09:00");
+  const dayText = `${dayDate.getUTCMonth() + 1}월 ${dayDate.getUTCDate()}일 (${"일월화수목금토"[dayDate.getUTCDay()]})`;
+
   return (
-    <div className="mt-6">
-      {/* 등급 안내 */}
-      {suspended ? (
-        <div className="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-          신용 점수가 50점 미만이라 새 예약이 제한된 상태입니다.
-          {suspendedDay && ` ${suspendedDay}부터 다시 예약할 수 있어요.`}
-        </div>
-      ) : (
-        <>
-          <p className="text-sm text-gray-500">
-            {grade.name} 등급: {grade.days}일 이내 예약, 동시 {grade.max}건, 무료 취소는{" "}
-            {grade.cancelHours}시간 전까지{!grade.peak && ", 인기 시간대 불가"} (현재 {mine.length}/{grade.max}건 사용 중)
-          </p>
-          {score < 100 && (
-            <p className="mt-1 text-xs text-gray-500">
-              점수는 매월 1일 5점씩 회복돼요. (100점까지)
-            </p>
-          )}
-          {/* 등급 하락 경고: 늦은 취소나 노쇼 한 번이면 등급이 내려가는 점수일 때 */}
-          {(() => {
-            const late = dropAfter(score, -15);
-            const noShow = dropAfter(score, -30);
-            const g = late ?? noShow;
-            if (!g) return null;
-            return (
-              <p className="mt-2 rounded border border-orange-300 bg-orange-50 px-4 py-2 text-sm text-orange-800">
-                {late ? "늦은 취소(−15점)나 노쇼(−30점)" : "노쇼(−30점)"} 한 번이면 {g.name} 등급으로 내려가요.
-                <br />
-                <span className="text-xs">{g.name} 등급: {limitText(g)}</span>
-              </p>
-            );
-          })()}
-          {full && (
-            <p className="mt-2 rounded border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
-              동시에 잡을 수 있는 예약 {grade.max}건을 모두 쓰고 있어요. 기존 예약을 취소하거나
-              방문한 뒤에 새로 예약할 수 있어요.
-            </p>
-          )}
-        </>
-      )}
-
-      {/* 예약 대상 */}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {resources.map((r) => (
-          <button
-            key={r.id}
-            onClick={() => setResourceId(r.id)}
-            className={`rounded border px-3 py-1 ${
-              r.id === resourceId ? "bg-black text-white" : ""
-            }`}
-          >
-            {r.name}
-          </button>
-        ))}
-      </div>
-
-      {/* 날짜 */}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {days.map((d) => (
-          <button
-            key={d}
-            onClick={() => setDay(d)}
-            className={`shrink-0 rounded border px-3 py-1 text-sm ${
-              d === day ? "bg-black text-white" : ""
-            }`}
-          >
-            {new Date(d + "T00:00:00+09:00").toLocaleDateString("ko-KR", {
-              timeZone: "Asia/Seoul",
-              month: "numeric",
-              day: "numeric",
-              weekday: "short",
-            })}
-          </button>
-        ))}
-      </div>
-
-      {/* 시간표 */}
-      <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-5">
-        {hours.map((h) => {
-          const slot = slotOf(day, h);
-          const isPast = new Date(slot).getTime() <= now;
-          const isMine = mine.some((m) => m.resource_id === resourceId && sameTime(m.slot, slot));
-          const isTaken = taken.some((t) => sameTime(t, slot));
-          const isHeld = !isTaken && held.some((t) => sameTime(t, slot));
-          const isPeak = isPeakHour(h);
-          const peakBlocked = isPeak && !grade.peak;
-          const disabled = suspended || full || isPast || isTaken || peakBlocked || busySlot !== null;
-          return (
-            <button
-              key={h}
-              disabled={disabled}
-              onClick={() => hold(slot)}
-              className={`rounded border py-3 text-sm ${
-                isMine
-                  ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : isTaken || isPast || suspended || full || peakBlocked
-                  ? "bg-gray-100 text-gray-400"
-                  : isHeld
-                  ? "border-yellow-400 bg-yellow-50 text-yellow-800"
-                  : "hover:bg-gray-50"
-              }`}
-            >
-              {h}:00
-              <div className="text-xs">
-                {isMine ? "내 예약" : isTaken ? "예약됨" : isPast ? "지남" : suspended ? "제한" : full ? "한도" : peakBlocked ? "인기 시간" : busySlot === slot ? "..." : isHeld ? "다른 분이 결정 중" : isPeak ? "가능 (인기)" : "가능"}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-
-      {/* 내 예약 */}
-      <h2 className="mt-8 font-semibold">내 예약</h2>
-      {mine.length === 0 ? (
-        <p className="mt-2 text-sm text-gray-500">예약이 없습니다.</p>
-      ) : (
-        <ul className="mt-2 divide-y rounded border">
-          {mine.map((r) => {
-            const deadline = new Date(r.slot).getTime() - grade.cancelHours * 3600000;
-            const late = now > deadline;
-            return (
-            <li key={r.id} className="flex items-center justify-between px-3 py-2 text-sm">
-              <span>
-                {resources.find((x) => x.id === r.resource_id)?.name} / {label(r.slot)}
-                <span className={`ml-2 text-xs ${late ? "text-red-600" : "text-gray-500"}`}>
-                  {late
-                    ? `무료 취소 마감 지남 (취소 시 −15점${dropAfter(score, -15) ? `, ${dropAfter(score, -15)?.name} 등급으로 하락` : ""})`
-                    : `무료 취소: ${label(new Date(deadline).toISOString())}까지`}
-                </span>
-              </span>
-              <button className="text-red-600" onClick={() => cancel(r)}>
-                취소
+    <div className="grid items-start gap-5 lg:grid-cols-[1fr_340px]">
+      <div className="space-y-5">
+        {/* 예약 대상 */}
+        <section className="box">
+          <h2 className="tit">예약 대상</h2>
+          <div className="seg pl-px">
+            {resources.map((r) => (
+              <button key={r.id} aria-pressed={r.id === resourceId} onClick={() => setResourceId(r.id)}>
+                {r.name}
               </button>
-            </li>
-            );
-          })}
-        </ul>
-      )}
+            ))}
+          </div>
+          {resource && (
+            <p className="mt-3 text-sm text-sub">
+              운영 시간 {resource.open_hour}:00 ~ {resource.close_hour}:00, 예약은 1시간 단위입니다.
+            </p>
+          )}
+        </section>
+
+        {/* 날짜와 시간 */}
+        <section className="box">
+          <h2 className="tit">날짜와 시간</h2>
+          <div className="grid gap-6 sm:grid-cols-[260px_1fr]">
+            <Calendar days={days} day={day} onPick={setDay} />
+
+            <div>
+              <p className="font-bold">
+                {dayText} <span className="font-normal text-sub">{resource?.name}</span>
+              </p>
+              <div className="num mt-3 grid grid-cols-2 gap-1.5">
+                {hours.map((h) => {
+                  const slot = slotOf(day, h);
+                  const isPast = new Date(slot).getTime() <= now;
+                  const isMine = mine.some((m) => m.resource_id === resourceId && sameTime(m.slot, slot));
+                  const isTaken = taken.some((t) => sameTime(t, slot));
+                  const isHeld = !isTaken && held.some((t) => sameTime(t, slot));
+                  const isPeak = isPeakHour(h);
+                  const peakBlocked = isPeak && !grade.peak;
+                  const disabled = suspended || full || isPast || isTaken || peakBlocked || busySlot !== null;
+                  const blocked = isPast || suspended || full || peakBlocked;
+                  return (
+                    <button
+                      key={h}
+                      disabled={disabled}
+                      onClick={() => hold(slot)}
+                      className={`flex items-center justify-between border px-3 py-2 text-left text-sm ${
+                        isMine
+                          ? "border-pine bg-pine text-white"
+                          : isTaken
+                          ? "hatch border-line text-[#8b9198]"
+                          : blocked
+                          ? "border-line bg-wash text-[#a9aeb4]"
+                          : isHeld
+                          ? "border-warn bg-warn-wash text-warn"
+                          : "border-[#b9bec4] bg-white hover:border-pine hover:bg-pine-wash"
+                      }`}
+                    >
+                      <span className="font-semibold">
+                        {h}:00
+                        {isPeak && !isMine && <em className="ml-1.5 text-xs font-bold not-italic text-warn">인기</em>}
+                      </span>
+                      <span className="text-xs">
+                        {isMine ? "내 예약" : isTaken ? "예약됨" : isPast ? "마감" : suspended ? "제한" : full ? "한도 초과" : peakBlocked ? "주의 등급 불가" : busySlot === slot ? "..." : isHeld ? "다른 회원 결정 중" : "예약 가능"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-xs leading-5 text-sub">
+                ※ 시간을 누르면 확인 창이 뜨고, 60초 안에 예약하기를 눌러야 예약됩니다.
+                <br />※ 같은 시간을 여러 명이 누르면 먼저 누른 회원에게 우선권이 있습니다.
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <aside className="space-y-5">
+        {/* 점수와 등급 */}
+        <section className="box">
+          <h2 className="tit">내 신용 점수</h2>
+          <p className="num">
+            <strong className={`text-3xl font-extrabold ${GRADE_TEXT[grade.name]}`}>{score}</strong>
+            <span className="ml-1 text-sub">점</span>
+            <span className={`ml-3 font-bold ${GRADE_TEXT[grade.name]}`}>{grade.name} 등급</span>
+          </p>
+          <ScoreRuler score={score} marks={dropMarks} />
+
+          {suspended ? (
+            <p className="text-sm leading-6 text-stop">
+              ※ 점수가 50점 미만이라 새 예약이 제한됩니다.
+              {suspendedDay && ` ${suspendedDay}부터 다시 예약할 수 있습니다.`}
+            </p>
+          ) : (
+            <>
+              <table className="info num w-full text-sm">
+                <tbody>
+                  <tr>
+                    <th>예약 가능 기간</th>
+                    <td>오늘부터 {grade.days}일</td>
+                  </tr>
+                  <tr>
+                    <th>동시 예약</th>
+                    <td>
+                      {grade.max}건 중 {mine.length}건 사용
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>무료 취소</th>
+                    <td>예약 {grade.cancelHours}시간 전까지</td>
+                  </tr>
+                  <tr>
+                    <th>인기 시간대</th>
+                    <td>{grade.peak ? "예약 가능" : "예약 불가"}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div className="mt-3 space-y-1 text-xs leading-5">
+                {/* 등급 하락 경고: 늦은 취소나 노쇼 한 번이면 등급이 내려가는 점수일 때 */}
+                {dropTo && (
+                  <p className="text-warn">
+                    ※ {lateDrop ? "늦은 취소(−15점) 또는 노쇼(−30점)" : "노쇼(−30점)"} 1회 시 {dropTo.name} 등급으로
+                    내려갑니다. ({limitText(dropTo)})
+                  </p>
+                )}
+                {full && <p className="text-stop">※ 동시 예약 {grade.max}건을 모두 사용 중이라 새로 예약할 수 없습니다.</p>}
+                {score < 100 && <p className="text-sub">※ 점수는 매월 1일 5점씩 회복됩니다. (100점까지)</p>}
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* 내 예약 */}
+        <section className="box">
+          <h2 className="tit">내 예약 {mine.length > 0 && <span className="num text-pine">{mine.length}</span>}</h2>
+          {mine.length === 0 ? (
+            <p className="py-4 text-center text-sm text-sub">예약 내역이 없습니다.</p>
+          ) : (
+            <ul className="-mt-2 divide-y divide-[#eceef0]">
+              {mine.map((r) => {
+                const deadline = new Date(r.slot).getTime() - grade.cancelHours * 3600000;
+                const late = now > deadline;
+                return (
+                  <li key={r.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+                    <span>
+                      <span className="font-semibold">{label(r.slot)}</span>
+                      <span className="ml-1.5 text-sub">{resources.find((x) => x.id === r.resource_id)?.name}</span>
+                      <span className={`block text-xs leading-5 ${late ? "text-stop" : "text-sub"}`}>
+                        {late
+                          ? `무료 취소 마감 지남 (취소 시 −15점${lateDrop ? `, ${lateDrop.name} 등급으로 하락` : ""})`
+                          : `무료 취소 ${label(new Date(deadline).toISOString())}까지`}
+                      </span>
+                    </span>
+                    <button className="btn shrink-0" onClick={() => cancel(r)}>
+                      취소
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </aside>
 
       {/* 예약 확인 창 (떠 있는 동안은 예약 대기 상태) */}
       {pending && (
         <div
-          className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 px-4"
+          className="fixed inset-0 z-10 flex items-center justify-center bg-black/50 px-4"
           onClick={() => cancelHold()}
         >
-          <div
-            className="w-full max-w-sm rounded bg-white p-5 text-sm shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="text-base font-semibold">
-              {resources.find((x) => x.id === pending.resourceId)?.name} / {label(pending.slot)}
-            </p>
-            <p className="mt-2">이 시간으로 예약할까요?</p>
-            <p className="mt-1 text-gray-500">
-              무료 취소는{" "}
-              {label(new Date(new Date(pending.slot).getTime() - grade.cancelHours * 3600000).toISOString())}
-              까지예요.
-            </p>
-            {pending.ahead > 0 && !pending.note && (
-              <p className="mt-3 rounded bg-yellow-50 px-3 py-2 text-yellow-800">
-                먼저 누른 분이 {pending.ahead}명 있어요. 그분이 취소하면 예약할 수 있어요.
-              </p>
-            )}
-            {pending.note && (
-              <p className="mt-3 rounded bg-yellow-50 px-3 py-2 text-yellow-800">{pending.note}</p>
-            )}
-            <p className="mt-3 text-xs text-gray-400">{left}초 뒤 자동으로 취소됩니다.</p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button className="rounded border px-4 py-2" onClick={() => cancelHold()}>
-                취소
-              </button>
-              <button
-                disabled={busySlot !== null}
-                className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
-                onClick={confirmHold}
-              >
-                확인
-              </button>
+          <div className="w-full max-w-[380px] bg-white text-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between bg-pine px-5 py-3 text-white">
+              <strong className="text-base">예약 확인</strong>
+              <span className="num text-xs">남은 시간 {left}초</span>
+            </div>
+            <div className="px-5 pt-3 pb-5">
+              <table className="info num w-full">
+                <tbody>
+                  <tr>
+                    <th>예약 대상</th>
+                    <td>{resources.find((x) => x.id === pending.resourceId)?.name}</td>
+                  </tr>
+                  <tr>
+                    <th>예약 일시</th>
+                    <td>{label(pending.slot)}</td>
+                  </tr>
+                  <tr>
+                    <th>무료 취소</th>
+                    <td>
+                      {label(new Date(new Date(pending.slot).getTime() - grade.cancelHours * 3600000).toISOString())}
+                      까지
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              {pending.ahead > 0 && !pending.note && (
+                <p className="mt-3 text-warn">
+                  ※ 먼저 누른 회원이 {pending.ahead}명 있습니다. 그 회원이 취소하면 예약할 수 있습니다.
+                </p>
+              )}
+              {pending.note && (
+                <p className={`mt-3 ${pending.note === ERRORS.WAIT_TURN ? "text-warn" : "font-semibold text-pine"}`}>
+                  ※ {pending.note}
+                </p>
+              )}
+              <p className="mt-3 text-xs text-sub">※ 시간 안에 예약하지 않으면 자동으로 취소됩니다.</p>
+              <div className="mt-4 grid grid-cols-[1fr_2fr] gap-2">
+                <button className="btn py-2.5" onClick={() => cancelHold()}>
+                  닫기
+                </button>
+                <button disabled={busySlot !== null} className="btn btn-main py-2.5" onClick={confirmHold}>
+                  예약하기
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -511,8 +561,8 @@ export default function Booking({
       {/* 알림 */}
       {toast && (
         <div
-          className={`fixed bottom-6 left-1/2 z-20 w-max max-w-[90vw] -translate-x-1/2 rounded px-4 py-3 text-sm text-white shadow ${
-            toast.ok ? "bg-gray-900" : "bg-red-600"
+          className={`fixed bottom-6 left-1/2 z-20 w-max max-w-[90vw] -translate-x-1/2 px-5 py-3 text-sm text-white shadow-lg ${
+            toast.ok ? "bg-ink" : "bg-stop"
           }`}
         >
           {toast.text}

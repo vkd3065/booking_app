@@ -1,6 +1,7 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { gradeOf } from "@/lib/grade";
+import SiteHeader from "../site-header";
+import ScoreRuler, { GRADE_TEXT } from "../score-ruler";
 
 type Log = {
   id: number;
@@ -36,7 +37,7 @@ export default async function History() {
   const { data: auth } = await supabase.auth.getClaims();
   const userId = auth?.claims?.sub ?? "";
 
-  const { data: profile } = await supabase.from("profiles").select("score").eq("id", userId).single();
+  const { data: profile } = await supabase.from("profiles").select("name, score, is_admin").eq("id", userId).single();
   const { data } = await supabase
     .from("score_logs")
     .select("id, delta, score_after, reason, created_at, reservations(slot, resources(name))")
@@ -47,56 +48,81 @@ export default async function History() {
   const score = profile?.score ?? 100;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">점수 내역</h1>
-        <Link href="/" className="rounded border px-2 py-1 text-sm">
-          예약 화면으로
-        </Link>
-      </header>
+    <>
+      <SiteHeader name={profile?.name ?? "회원"} isAdmin={!!profile?.is_admin} current="history" />
+      <main className="mx-auto grid w-full max-w-[1080px] items-start gap-5 px-4 py-6 lg:grid-cols-[340px_1fr]">
+        <section className="box">
+          <h2 className="tit">내 신용 점수</h2>
+          <p className="num">
+            <strong className={`text-3xl font-extrabold ${GRADE_TEXT[gradeOf(score).name]}`}>{score}</strong>
+            <span className="ml-1 text-sub">점</span>
+            <span className={`ml-3 font-bold ${GRADE_TEXT[gradeOf(score).name]}`}>{gradeOf(score).name} 등급</span>
+          </p>
+          <ScoreRuler score={score} />
+          <table className="info num w-full text-sm">
+            <tbody>
+              <tr>
+                <th>방문</th>
+                <td className="text-pine">+5점</td>
+              </tr>
+              <tr>
+                <th>늦은 취소</th>
+                <td className="text-stop">−15점</td>
+              </tr>
+              <tr>
+                <th>노쇼</th>
+                <td className="text-stop">−30점</td>
+              </tr>
+              <tr>
+                <th>매월 1일</th>
+                <td className="text-pine">+5점 (100점까지)</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
 
-      <p className="mt-4 text-sm text-gray-600">
-        현재 신용 점수 {score}점 ({gradeOf(score).name} 등급)
-      </p>
-
+        <section className="box">
+          <h2 className="tit">점수 변동 내역</h2>
       {logs.length === 0 ? (
-        <p className="mt-4 text-sm text-gray-500">아직 점수 변동이 없습니다.</p>
+        <p className="py-8 text-center text-sm text-sub">점수 변동 내역이 없습니다.</p>
       ) : (
-        <table className="mt-4 w-full border-collapse text-sm">
+        <table className="list num -mt-[14px] border-t-0">
           <thead>
-            <tr className="text-left text-gray-500">
-              <th className="border-b border-gray-200 px-2 py-1 font-normal">날짜</th>
-              <th className="border-b border-gray-200 px-2 py-1 font-normal">내용</th>
-              <th className="border-b border-gray-200 px-2 py-1 text-right font-normal">변동</th>
-              <th className="border-b border-gray-200 px-2 py-1 text-right font-normal">점수</th>
+            <tr>
+              <th>날짜</th>
+              <th>내용</th>
+              <th className="!text-right">변동</th>
+              <th className="!text-right">점수</th>
             </tr>
           </thead>
           <tbody>
             {logs.map((l) => (
               <tr key={l.id}>
-                <td className="border-b border-gray-200 px-2 py-2 text-gray-500">{when(l.created_at)}</td>
-                <td className="border-b border-gray-200 px-2 py-2">
+                <td className="text-sub">{when(l.created_at)}</td>
+                <td>
                   {l.reason}
                   {l.reservations && (
-                    <span className="ml-2 text-xs text-gray-500">
+                    <span className="ml-2 text-xs text-sub">
                       {slotLabel(l.reservations.slot)} {l.reservations.resources?.name} 예약
                     </span>
                   )}
                 </td>
                 <td
-                  className={`border-b border-gray-200 px-2 py-2 text-right ${
-                    l.delta > 0 ? "text-blue-600" : "text-red-600"
+                  className={`text-right font-semibold ${
+                    l.delta > 0 ? "text-pine" : "text-stop"
                   }`}
                 >
                   {l.delta > 0 ? "+" : ""}
                   {l.delta}
                 </td>
-                <td className="border-b border-gray-200 px-2 py-2 text-right">{l.score_after}</td>
+                <td className="text-right font-semibold">{l.score_after}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-    </main>
+        </section>
+      </main>
+    </>
   );
 }

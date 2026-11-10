@@ -1,8 +1,6 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { gradeOf } from "@/lib/grade";
 import Booking from "./booking";
-import LogoutButton from "./logout-button";
+import SiteHeader from "./site-header";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -28,32 +26,11 @@ export default async function Home() {
   const score = profile?.score ?? 100;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">
-          <Link href="/">예약 시스템</Link>
-        </h1>
-        <div className="flex items-center gap-3 text-sm">
-          <span>
-            {profile?.name ?? "회원"} 님 (신용 점수 {score} / {gradeOf(score).name} 등급)
-          </span>
-          <Link href="/history" className="rounded border px-2 py-1">
-            점수 내역
-          </Link>
-          {profile?.is_admin && (
-            <Link href="/admin" className="rounded border px-2 py-1">
-              관리자
-            </Link>
-          )}
-          <LogoutButton />
-        </div>
-      </header>
-
-      <Booking
-        resources={resources ?? []}
-        score={score}
-        suspendedUntil={profile?.suspended_until ?? null}
-      />
-    </main>
+    <>
+      <SiteHeader name={profile?.name ?? "회원"} isAdmin={!!profile?.is_admin} current="book" />
+      <main className="mx-auto w-full max-w-[1080px] px-4 py-6">
+        <Booking resources={resources ?? []} score={score} suspendedUntil={profile?.suspended_until ?? null} />
+      </main>
+    </>
   );
 }
