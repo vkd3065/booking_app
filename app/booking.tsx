@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { gradeOf } from "@/lib/grade";
+import { gradeOf, dropAfter, limitText } from "@/lib/grade";
 
 type Resource = { id: number; name: string; open_hour: number; close_hour: number };
 type MyReservation = { id: number; slot: string; resource_id: number };
@@ -337,6 +337,20 @@ export default function Booking({
               점수는 매월 1일 5점씩 회복돼요. (100점까지)
             </p>
           )}
+          {/* 등급 하락 경고: 늦은 취소나 노쇼 한 번이면 등급이 내려가는 점수일 때 */}
+          {(() => {
+            const late = dropAfter(score, -15);
+            const noShow = dropAfter(score, -30);
+            const g = late ?? noShow;
+            if (!g) return null;
+            return (
+              <p className="mt-2 rounded border border-orange-300 bg-orange-50 px-4 py-2 text-sm text-orange-800">
+                {late ? "늦은 취소(−15점)나 노쇼(−30점)" : "노쇼(−30점)"} 한 번이면 {g.name} 등급으로 내려가요.
+                <br />
+                <span className="text-xs">{g.name} 등급: {limitText(g)}</span>
+              </p>
+            );
+          })()}
           {full && (
             <p className="mt-2 rounded border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
               동시에 잡을 수 있는 예약 {grade.max}건을 모두 쓰고 있어요. 기존 예약을 취소하거나
