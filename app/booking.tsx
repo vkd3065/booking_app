@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { gradeOf, dropAfter, limitText } from "@/lib/grade";
 import ScoreRuler, { GRADE_TEXT } from "./score-ruler";
-import Calendar from "./calendar";
 
 type Resource = { id: number; name: string; open_hour: number; close_hour: number };
 type MyReservation = { id: number; slot: string; resource_id: number };
@@ -85,7 +84,14 @@ export default function Booking({
   );
 
   const [resourceId, setResourceId] = useState(resources[0]?.id ?? 0);
-  const [day, setDay] = useState(days[0]);
+  // 보고 있는 주 (오늘부터 7일씩)
+  const [weekNo, setWeekNo] = useState(0);
+  const week = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => kstDate(new Date(now + (weekNo * 7 + i) * 86400000))),
+    [now, weekNo]
+  );
+  const weekKey = week[0];
+  const lastWeekNo = Math.ceil(days.length / 7) - 1;
   const [taken, setTaken] = useState<string[]>([]);
   const [held, setHeld] = useState<string[]>([]); // 다른 사람이 결정 중인 시간
   const [peaks, setPeaks] = useState<{ weekday: number; hour: number }[]>([]); // 인기 시간대
@@ -108,17 +114,16 @@ export default function Booking({
   // 예약된 시간
   const loadTaken = useCallback(async () => {
     if (!resourceId) return;
-    const { data } = await supabase.rpc("get_taken_slots", {
-      p_resource_id: resourceId,
-      p_day: day,
-    });
-    setTaken((data as string[] | null) ?? []);
-    const { data: h } = await supabase.rpc("get_held_slots", {
-      p_resource_id: resourceId,
-      p_day: day,
-    });
-    setHeld((h as string[] | null) ?? []);
-  }, [supabase, resourceId, day]);
+    // 보고 있는 주 7일치를 한꺼번에 불러옴
+    const call = (fn: string) =>
+      Promise.all(week.map((d) => supabase.rpc(fn, { p_resource_id: resourceId, p_day: d }))).then((rs) =>
+        rs.flatMap((r) => (r.data as string[] | null) ?? [])
+      );
+    const [t, h] = await Promise.all([call("get_taken_slots"), call("get_held_slots")]);
+    setTaken(t);
+    setHeld(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, resourceId, weekKey]);
 
   // 인기 시간대 (자원별)
   useEffect(() => {
@@ -129,8 +134,8 @@ export default function Booking({
       .eq("resource_id", resourceId)
       .then(({ data }) => setPeaks(data ?? []));
   }, [supabase, resourceId]);
-  const weekday = new Date(day + "T12:00:00+09:00").getUTCDay();
-  const isPeakHour = (h: number) => peaks.some((p) => p.weekday === weekday && p.hour === h);
+  const weekdayOf = (d: string) => new Date(d + "T12:00:00+09:00").getUTCDay();
+  const isPeakAt = (d: string, h: number) => peaks.some((p) => p.weekday === weekdayOf(d) && p.hour === h);
 
   // 내 예약
   const loadMine = useCallback(async () => {
@@ -223,8 +228,8 @@ export default function Booking({
             return;
           }
         }
-        // 보고 있는 날짜면 알림
-        if (payload?.type === "booked" && kstDate(new Date(payload.slot)) === day) {
+        // 보고 있는 주면 알림
+        if (payload?.type === "booked" && week.includes(kstDate(new Date(payload.slot)))) {
           showToast(`${label(payload.slot)}은 방금 다른 회원이 예약했습니다.`);
         }
       })
@@ -232,7 +237,8 @@ export default function Booking({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, resourceId, day, loadTaken, showToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, resourceId, weekKey, loadTaken, showToast]);
 
   // 시간 칸을 누름: 예약 대기 등록 (아직 예약 아님)
   async function hold(slot: string) {
@@ -334,15 +340,14 @@ export default function Booking({
       )
     : [];
 
-  const dayDate = new Date(day + "T12:00:00+09:00");
-  const dayText = `${dayDate.getUTCMonth() + 1}월 ${dayDate.getUTCDate()}일 (${"일월화수목금토"[dayDate.getUTCDay()]})`;
+  const md = (d: string) => `${Number(d.slice(5, 7))}.${Number(d.slice(8, 10))}`;
 
   return (
     <div className="grid items-start gap-5 lg:grid-cols-[1fr_340px]">
-      <div className="space-y-5">
-        {/* 예약 대상 */}
-        <section className="box">
-          <h2 className="tit">예약 대상</h2>
+      {/* 주간 시간표 */}
+      <section className="box min-w-0">
+        <h2 className="tit">예약하기</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="seg pl-px">
             {resources.map((r) => (
               <button key={r.id} aria-pressed={r.id === resourceId} onClick={() => setResourceId(r.id)}>
@@ -350,70 +355,122 @@ export default function Booking({
               </button>
             ))}
           </div>
-          {resource && (
-            <p className="mt-3 text-sm text-sub">
-              운영 시간 {resource.open_hour}:00 ~ {resource.close_hour}:00, 예약은 1시간 단위입니다.
-            </p>
-          )}
-        </section>
+          <div className="num flex items-center gap-1.5 text-sm">
+            <button className="btn px-2" disabled={weekNo === 0} onClick={() => setWeekNo(weekNo - 1)} aria-label="이전 주">
+              &lt;
+            </button>
+            <strong className="px-1">
+              {md(week[0])} ~ {md(week[6])}
+            </strong>
+            <button
+              className="btn px-2"
+              disabled={weekNo >= lastWeekNo}
+              onClick={() => setWeekNo(weekNo + 1)}
+              aria-label="다음 주"
+            >
+              &gt;
+            </button>
+          </div>
+        </div>
 
-        {/* 날짜와 시간 */}
-        <section className="box">
-          <h2 className="tit">날짜와 시간</h2>
-          <div className="grid gap-6 sm:grid-cols-[260px_1fr]">
-            <Calendar days={days} day={day} onPick={setDay} />
-
-            <div>
-              <p className="font-bold">
-                {dayText} <span className="font-normal text-sub">{resource?.name}</span>
-              </p>
-              <div className="num mt-3 grid grid-cols-2 gap-1.5">
-                {hours.map((h) => {
-                  const slot = slotOf(day, h);
-                  const isPast = new Date(slot).getTime() <= now;
-                  const isMine = mine.some((m) => m.resource_id === resourceId && sameTime(m.slot, slot));
-                  const isTaken = taken.some((t) => sameTime(t, slot));
-                  const isHeld = !isTaken && held.some((t) => sameTime(t, slot));
-                  const isPeak = isPeakHour(h);
-                  const peakBlocked = isPeak && !grade.peak;
-                  const disabled = suspended || full || isPast || isTaken || peakBlocked || busySlot !== null;
-                  const blocked = isPast || suspended || full || peakBlocked;
+        <div className="mt-3 overflow-x-auto">
+          <table className="num w-full min-w-[520px] table-fixed border-collapse text-center text-xs">
+            <thead>
+              <tr>
+                <th className="w-14 border border-line bg-[#f7f8f9] py-1.5 font-normal text-sub">시간</th>
+                {week.map((d) => {
+                  const dow = weekdayOf(d);
                   return (
-                    <button
-                      key={h}
-                      disabled={disabled}
-                      onClick={() => hold(slot)}
-                      className={`flex items-center justify-between border px-3 py-2 text-left text-sm ${
-                        isMine
-                          ? "border-pine bg-pine text-white"
-                          : isTaken
-                          ? "hatch border-line text-[#8b9198]"
-                          : blocked
-                          ? "border-line bg-wash text-[#a9aeb4]"
-                          : isHeld
-                          ? "border-warn bg-warn-wash text-warn"
-                          : "border-[#b9bec4] bg-white hover:border-pine hover:bg-pine-wash"
-                      }`}
+                    <th
+                      key={d}
+                      className={`border border-line py-1.5 font-normal ${d === days[0] ? "bg-pine-wash" : "bg-[#f7f8f9]"}`}
                     >
-                      <span className="font-semibold">
-                        {h}:00
-                        {isPeak && !isMine && <em className="ml-1.5 text-xs font-bold not-italic text-warn">인기</em>}
+                      <span className={dow === 0 ? "text-stop" : dow === 6 ? "text-top" : "text-sub"}>
+                        {"일월화수목금토"[dow]}
                       </span>
-                      <span className="text-xs">
-                        {isMine ? "내 예약" : isTaken ? "예약됨" : isPast ? "마감" : suspended ? "제한" : full ? "한도 초과" : peakBlocked ? "주의 등급 불가" : busySlot === slot ? "..." : isHeld ? "다른 회원 결정 중" : "예약 가능"}
-                      </span>
-                    </button>
+                      <strong className="block text-sm text-ink">
+                        {md(d)}
+                        {d === days[0] && <span className="ml-1 text-[11px] font-normal text-pine">오늘</span>}
+                      </strong>
+                    </th>
                   );
                 })}
-              </div>
-              <p className="mt-3 text-xs leading-5 text-sub">
-                ※ 시간을 누르면 확인 창이 뜨고, 60초 안에 예약하기를 눌러야 예약됩니다.
-                <br />※ 같은 시간을 여러 명이 누르면 먼저 누른 회원에게 우선권이 있습니다.
-              </p>
-            </div>
-          </div>
-        </section>
-      </div>
+              </tr>
+            </thead>
+            <tbody>
+              {hours.map((h) => (
+                <tr key={h}>
+                  <th className="border border-line bg-[#f7f8f9] font-normal text-sub">{h}:00</th>
+                  {week.map((d) => {
+                    const slot = slotOf(d, h);
+                    const inRange = days.includes(d);
+                    const isPast = new Date(slot).getTime() <= now;
+                    const isMine = mine.some((m) => m.resource_id === resourceId && sameTime(m.slot, slot));
+                    const isTaken = taken.some((t) => sameTime(t, slot));
+                    const isHeld = !isTaken && held.some((t) => sameTime(t, slot));
+                    const isPeak = isPeakAt(d, h);
+                    const peakBlocked = isPeak && !grade.peak;
+                    const closed = !inRange || isPast || suspended;
+                    const open = !closed && !isMine && !isTaken && !full && !peakBlocked;
+                    return (
+                      <td key={d} className={`h-9 border border-line p-0 ${d === days[0] ? "bg-pine-wash/40" : ""}`}>
+                        {isMine ? (
+                          <span className="flex h-full items-center justify-center bg-pine font-semibold text-white">
+                            내 예약
+                          </span>
+                        ) : isTaken ? (
+                          <span className="hatch flex h-full items-center justify-center text-[#8b9198]">예약됨</span>
+                        ) : closed ? (
+                          <span className="block h-full bg-[#f0f1f3]" />
+                        ) : (
+                          <button
+                            disabled={!open || busySlot !== null}
+                            onClick={() => hold(slot)}
+                            title={`${md(d)} ${h}:00`}
+                            className={`relative h-full w-full ${
+                              isHeld
+                                ? "bg-warn-wash text-warn"
+                                : open
+                                ? "text-pine hover:bg-pine hover:text-white"
+                                : "text-[#a9aeb4]"
+                            }`}
+                          >
+                            {busySlot === slot ? "..." : isHeld ? "결정 중" : peakBlocked ? "불가" : full ? "한도" : "가능"}
+                            {isPeak && <i className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-warn" />}
+                          </button>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sub">
+          <li className="flex items-center gap-1">
+            <i className="inline-block h-3 w-3 bg-pine" /> 내 예약
+          </li>
+          <li className="flex items-center gap-1">
+            <i className="hatch inline-block h-3 w-3 border border-line" /> 예약됨
+          </li>
+          <li className="flex items-center gap-1">
+            <i className="inline-block h-3 w-3 border border-line bg-warn-wash" /> 다른 회원 결정 중
+          </li>
+          <li className="flex items-center gap-1">
+            <i className="inline-block h-3 w-3 border border-line bg-[#f0f1f3]" /> 지난 시간, 예약 기간 아님
+          </li>
+          <li className="flex items-center gap-1">
+            <i className="inline-block h-1.5 w-1.5 rounded-full bg-warn" /> 인기 시간대
+          </li>
+        </ul>
+        <p className="mt-3 text-xs leading-5 text-sub">
+          ※ {resource?.name} 운영 시간은 {resource?.open_hour}:00 ~ {resource?.close_hour}:00이며, 1시간 단위로 예약합니다.
+          <br />※ &apos;가능&apos; 칸을 누르면 확인 창이 뜨고, 60초 안에 예약하기를 눌러야 예약됩니다.
+          <br />※ 같은 시간을 여러 명이 누르면 먼저 누른 회원에게 우선권이 있습니다.
+        </p>
+      </section>
 
       <aside className="space-y-5">
         {/* 점수와 등급 */}
