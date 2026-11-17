@@ -4,16 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-type Resource = { id: number; name: string; open_hour: number; close_hour: number; active: boolean };
-type Form = { id: number | null; name: string; open: number; close: number };
+type Resource = { id: number; name: string; open_hour: number; close_hour: number; active: boolean; price: number };
+type Form = { id: number | null; name: string; open: number; close: number; price: number };
 
 const ERRORS: Record<string, string> = {
   NOT_ADMIN: "관리자만 변경할 수 있습니다.",
   BAD_NAME: "이름을 입력해 주세요.",
   BAD_HOURS: "운영 시작 시각이 종료 시각보다 빨라야 합니다.",
+  BAD_PRICE: "요금은 0원 이상이어야 합니다.",
   HAS_RESERVATIONS: "남아 있는 예약이 있어 변경할 수 없습니다. 예약이 끝난 뒤 다시 시도해 주세요.",
 };
-const EMPTY: Form = { id: null, name: "", open: 10, close: 20 };
+const EMPTY: Form = { id: null, name: "", open: 10, close: 20, price: 10000 };
 const HOURS = Array.from({ length: 25 }, (_, i) => i);
 
 // 예약 대상 관리 (A8)
@@ -26,7 +27,7 @@ export default function Resources() {
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from("resources").select("id, name, open_hour, close_hour, active").order("id");
+    const { data } = await supabase.from("resources").select("id, name, open_hour, close_hour, active, price").order("id");
     setList(data ?? []);
   }, [supabase]);
 
@@ -36,9 +37,17 @@ export default function Resources() {
   }, [load]);
 
   // DB 함수 실행 후 목록과 다른 메뉴의 대상 목록을 새로 고침
-  async function run(fn: string, args: Record<string, unknown>, done: string) {
+  async function run(
+    fn: string,
+    args: Record<string, unknown>,
+    done: string,
+    then?: (data: unknown) => PromiseLike<{ error: { message: string } | null }>
+  ) {
     setBusy(true);
-    const { error } = await supabase.rpc(fn, args);
+    const first = await supabase.rpc(fn, args);
+    let error: { message: string } | null = first.error;
+    // 이어서 할 일 (대상 저장 뒤 요금 저장)
+    if (!error && then) error = (await then(first.data)).error;
     setBusy(false);
     if (error) {
       const key = Object.keys(ERRORS).find((k) => error.message.includes(k));
@@ -56,7 +65,8 @@ export default function Resources() {
     const ok = await run(
       "save_resource",
       { p_id: form.id, p_name: form.name, p_open: form.open, p_close: form.close },
-      form.id ? "수정했습니다." : "추가했습니다."
+      form.id ? "수정했습니다." : "추가했습니다.",
+      (id) => supabase.rpc("set_resource_price", { p_id: id, p_price: form.price })
     );
     if (ok) setForm(EMPTY);
   }
@@ -69,6 +79,7 @@ export default function Resources() {
             <th className="w-14">번호</th>
             <th>이름</th>
             <th>운영 시간</th>
+            <th>요금 (1시간)</th>
             <th>상태</th>
             <th className="w-40">관리</th>
           </tr>
@@ -81,6 +92,7 @@ export default function Resources() {
               <td>
                 {r.open_hour}:00 ~ {r.close_hour}:00
               </td>
+              <td>{r.price.toLocaleString("ko-KR")}원</td>
               <td className={r.active ? "text-pine" : ""}>{r.active ? "예약 받는 중" : "숨김"}</td>
               <td>
                 <span className="flex gap-1.5">
@@ -88,7 +100,7 @@ export default function Resources() {
                     className="btn"
                     disabled={busy}
                     onClick={() => {
-                      setForm({ id: r.id, name: r.name, open: r.open_hour, close: r.close_hour });
+                      setForm({ id: r.id, name: r.name, open: r.open_hour, close: r.close_hour, price: r.price });
                       setMsg(null);
                     }}
                   >
@@ -158,6 +170,20 @@ export default function Resources() {
                     </option>
                   ))}
                 </select>
+              </td>
+            </tr>
+            <tr>
+              <th className="!align-middle">요금 (1시간)</th>
+              <td className="font-normal">
+                <input
+                  type="number"
+                  min={0}
+                  step={1000}
+                  className="field w-32 text-right"
+                  value={form.price}
+                  onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+                />
+                <span className="ml-2">원</span>
               </td>
             </tr>
           </tbody>

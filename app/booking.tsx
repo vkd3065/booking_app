@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { gradeOf, dropAfter, limitText } from "@/lib/grade";
 import ScoreRuler, { GRADE_TEXT } from "./score-ruler";
 
-type Resource = { id: number; name: string; open_hour: number; close_hour: number };
+type Resource = { id: number; name: string; open_hour: number; close_hour: number; price: number };
 type MyReservation = { id: number; slot: string; resource_id: number };
 type Wait = { id: number; slot: string; resource_id: number };
 // 확인 창이 떠 있는 동안의 예약 대기
@@ -57,7 +57,12 @@ const ERRORS: Record<string, string> = {
   ALREADY_MINE: "본인이 예약한 시간입니다.",
   ALREADY_WAITING: "이미 대기 신청한 시간입니다.",
   WAIT_LIMIT: "대기 신청은 3건까지 가능합니다.",
+  CANNOT_PAY: "결제할 수 없는 예약입니다.",
+  TOO_EARLY: "예약 시각부터 결제할 수 있습니다.",
+  ALREADY_PAID: "이미 결제된 예약입니다.",
 };
+const won = (n: number) => n.toLocaleString("ko-KR") + "원";
+
 function toMessage(raw: string) {
   const key = Object.keys(ERRORS).find((k) => raw.includes(k));
   return key ? ERRORS[key] : "오류가 발생했습니다: " + raw;
@@ -103,6 +108,8 @@ export default function Booking({
   const [mine, setMine] = useState<MyReservation[]>([]);
   const [waits, setWaits] = useState<Wait[]>([]); // 대기 신청
   const waitsRef = useRef<Wait[]>([]);
+  const [due, setDue] = useState<MyReservation[]>([]); // 예약 시각이 지나 결제할 예약
+  const [paying, setPaying] = useState<MyReservation | null>(null);
   const [busySlot, setBusySlot] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -144,15 +151,16 @@ export default function Booking({
   const weekdayOf = (d: string) => new Date(d + "T12:00:00+09:00").getUTCDay();
   const isPeakAt = (d: string, h: number) => peaks.some((p) => p.weekday === weekdayOf(d) && p.hour === h);
 
-  // 내 예약, 대기 신청
+  // 내 예약 (앞으로 올 예약 / 시각이 지나 결제할 예약), 대기 신청
   const loadMine = useCallback(async () => {
     const nowIso = new Date().toISOString();
     const [res, w] = await Promise.all([
-      supabase.from("reservations").select("id, slot, resource_id").eq("status", "booked").gt("slot", nowIso).order("slot"),
+      supabase.from("reservations").select("id, slot, resource_id").eq("status", "booked").order("slot"),
       supabase.from("waitlist").select("id, slot, resource_id").eq("status", "waiting").gt("slot", nowIso).order("slot"),
     ]);
     const all = res.data ?? [];
-    setMine(all);
+    setMine(all.filter((r) => r.slot > nowIso));
+    setDue(all.filter((r) => r.slot <= nowIso));
     setWaits(w.data ?? []);
     waitsRef.current = w.data ?? [];
     return all;
@@ -360,6 +368,24 @@ export default function Booking({
     loadMine();
   }
 
+  // 테스트용 결제: 결제되면 방문으로 자동 처리
+  async function pay() {
+    if (!paying) return;
+    const r = paying;
+    setBusySlot(r.slot);
+    const { error } = await supabase.rpc("pay_reservation", { p_id: r.id });
+    setBusySlot(null);
+    setPaying(null);
+    if (error) {
+      showToast(toMessage(error.message));
+    } else {
+      showToast("결제가 완료되어 방문으로 처리되었습니다.", true);
+      router.refresh();
+    }
+    loadMine();
+  }
+  const priceOf = (id: number) => resources.find((x) => x.id === id)?.price ?? 0;
+
   // 예약 제한 상태 (점수 50 미만)
   const suspended = grade.max === 0;
   // 동시에 잡을 수 있는 예약 수를 다 썼는지
@@ -528,11 +554,38 @@ export default function Booking({
           ※ {resource?.name} 운영 시간은 {resource?.open_hour}:00 ~ {resource?.close_hour}:00이며, 1시간 단위로 예약합니다.
           <br />※ &apos;가능&apos; 칸을 누르면 확인 창이 뜨고, 60초 안에 예약하기를 눌러야 예약됩니다.
           <br />※ 같은 시간을 여러 명이 누르면 먼저 누른 회원에게 우선권이 있습니다.
+          {resource && (
+            <>
+              <br />※ 이용 요금은 1시간 {won(resource.price)}이며, 예약 시각 이후 이 화면에서 결제합니다. (테스트 결제)
+            </>
+          )}
           <br />※ &apos;예약됨&apos; 칸을 누르면 대기 신청을 할 수 있습니다. 취소가 나오면 신용 점수가 높은 순으로 자동 예약됩니다.
         </p>
       </section>
 
       <aside className="space-y-5">
+        {/* 예약 시각이 지난 예약: 결제하면 방문 처리 */}
+        {due.length > 0 && (
+          <section className="box border-pine">
+            <h2 className="tit">이용 요금 결제</h2>
+            <ul className="-mt-2 divide-y divide-[#eceef0]">
+              {due.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+                  <span>
+                    <span className="font-semibold">{label(r.slot)}</span>
+                    <span className="ml-1.5 text-sub">{resources.find((x) => x.id === r.resource_id)?.name}</span>
+                    <span className="num block text-xs leading-5 text-sub">{won(priceOf(r.resource_id))}</span>
+                  </span>
+                  <button className="btn btn-main shrink-0" onClick={() => setPaying(r)}>
+                    결제
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs leading-5 text-sub">※ 결제하면 방문으로 처리되어 신용 점수가 5점 오릅니다.</p>
+          </section>
+        )}
+
         {/* 점수와 등급 */}
         <section className="box">
           <h2 className="tit">내 신용 점수</h2>
@@ -645,6 +698,51 @@ export default function Booking({
         )}
       </aside>
 
+      {/* 결제 창 (테스트) */}
+      {paying && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/50 px-4" onClick={() => setPaying(null)}>
+          <div className="w-full max-w-[380px] bg-white text-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-pine px-5 py-3 text-white">
+              <strong className="text-base">이용 요금 결제</strong>
+            </div>
+            <div className="px-5 pt-3 pb-5">
+              <table className="info num w-full">
+                <tbody>
+                  <tr>
+                    <th>예약 대상</th>
+                    <td>{resources.find((x) => x.id === paying.resource_id)?.name}</td>
+                  </tr>
+                  <tr>
+                    <th>이용 일시</th>
+                    <td>{label(paying.slot)}</td>
+                  </tr>
+                  <tr>
+                    <th>결제 금액</th>
+                    <td>{won(priceOf(paying.resource_id))}</td>
+                  </tr>
+                  <tr>
+                    <th>결제 수단</th>
+                    <td>테스트 결제</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="mt-3 text-xs leading-5 text-sub">
+                ※ 테스트 결제이며 실제로 돈이 빠져나가지 않습니다.
+                <br />※ 결제 기록이 남으면 방문으로 자동 처리됩니다.
+              </p>
+              <div className="mt-4 grid grid-cols-[1fr_2fr] gap-2">
+                <button className="btn py-2.5" onClick={() => setPaying(null)}>
+                  닫기
+                </button>
+                <button disabled={busySlot !== null} className="btn btn-main py-2.5" onClick={pay}>
+                  {won(priceOf(paying.resource_id))} 결제하기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 예약 확인 창 (떠 있는 동안은 예약 대기 상태) */}
       {pending && (
         <div
@@ -666,6 +764,10 @@ export default function Booking({
                   <tr>
                     <th>예약 일시</th>
                     <td>{label(pending.slot)}</td>
+                  </tr>
+                  <tr>
+                    <th>이용 요금</th>
+                    <td>{won(priceOf(pending.resourceId))} (이용 당일 결제)</td>
                   </tr>
                   <tr>
                     <th>무료 취소</th>
