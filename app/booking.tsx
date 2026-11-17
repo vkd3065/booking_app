@@ -8,6 +8,7 @@ import ScoreRuler, { GRADE_TEXT } from "./score-ruler";
 
 type Resource = { id: number; name: string; open_hour: number; close_hour: number };
 type MyReservation = { id: number; slot: string; resource_id: number };
+type Wait = { id: number; slot: string; resource_id: number };
 // 확인 창이 떠 있는 동안의 예약 대기
 type Pending = { slot: string; resourceId: number; ahead: number; expiresAt: number; note: string };
 
@@ -52,6 +53,10 @@ const ERRORS: Record<string, string> = {
   SUSPENDED: "점수가 낮아 예약이 제한된 상태입니다.",
   PEAK_LIMIT: "주의 등급은 인기 시간대를 예약할 수 없습니다.",
   WAIT_TURN: "먼저 누른 회원이 아직 결정 중입니다. 그 회원이 취소하면 예약할 수 있습니다.",
+  NOT_TAKEN: "지금은 비어 있는 시간입니다. 바로 예약해 주세요.",
+  ALREADY_MINE: "본인이 예약한 시간입니다.",
+  ALREADY_WAITING: "이미 대기 신청한 시간입니다.",
+  WAIT_LIMIT: "대기 신청은 3건까지 가능합니다.",
 };
 function toMessage(raw: string) {
   const key = Object.keys(ERRORS).find((k) => raw.includes(k));
@@ -96,6 +101,8 @@ export default function Booking({
   const [held, setHeld] = useState<string[]>([]); // 다른 사람이 결정 중인 시간
   const [peaks, setPeaks] = useState<{ weekday: number; hour: number }[]>([]); // 인기 시간대
   const [mine, setMine] = useState<MyReservation[]>([]);
+  const [waits, setWaits] = useState<Wait[]>([]); // 대기 신청
+  const waitsRef = useRef<Wait[]>([]);
   const [busySlot, setBusySlot] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -137,15 +144,18 @@ export default function Booking({
   const weekdayOf = (d: string) => new Date(d + "T12:00:00+09:00").getUTCDay();
   const isPeakAt = (d: string, h: number) => peaks.some((p) => p.weekday === weekdayOf(d) && p.hour === h);
 
-  // 내 예약
+  // 내 예약, 대기 신청
   const loadMine = useCallback(async () => {
-    const { data } = await supabase
-      .from("reservations")
-      .select("id, slot, resource_id")
-      .eq("status", "booked")
-      .gt("slot", new Date().toISOString())
-      .order("slot");
-    setMine(data ?? []);
+    const nowIso = new Date().toISOString();
+    const [res, w] = await Promise.all([
+      supabase.from("reservations").select("id, slot, resource_id").eq("status", "booked").gt("slot", nowIso).order("slot"),
+      supabase.from("waitlist").select("id, slot, resource_id").eq("status", "waiting").gt("slot", nowIso).order("slot"),
+    ]);
+    const all = res.data ?? [];
+    setMine(all);
+    setWaits(w.data ?? []);
+    waitsRef.current = w.data ?? [];
+    return all;
   }, [supabase]);
 
   useEffect(() => {
@@ -205,6 +215,18 @@ export default function Booking({
       .on("broadcast", { event: "changed" }, ({ payload }) => {
         if (payload?.from === TAB_ID) return;
         loadTaken();
+        // 내가 대기하던 시간에 취소가 나왔으면 배정됐는지 확인
+        if (
+          payload?.type === "canceled" &&
+          waitsRef.current.some((w) => w.resource_id === resourceId && sameTime(w.slot, payload.slot))
+        ) {
+          loadMine().then((all) => {
+            if (all.some((r) => r.resource_id === resourceId && sameTime(r.slot, payload.slot))) {
+              showToast(`대기 신청한 ${label(payload.slot)} 예약이 배정되었습니다.`, true);
+            }
+          });
+          return;
+        }
         const p = pendingRef.current;
         if (p && p.resourceId === resourceId && sameTime(p.slot, payload?.slot)) {
           if (payload?.type === "booked") {
@@ -238,7 +260,7 @@ export default function Booking({
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, resourceId, weekKey, loadTaken, showToast]);
+  }, [supabase, resourceId, weekKey, loadTaken, loadMine, showToast]);
 
   // 시간 칸을 누름: 예약 대기 등록 (아직 예약 아님)
   async function hold(slot: string) {
@@ -313,6 +335,28 @@ export default function Booking({
       router.refresh();
     }
     loadTaken();
+    loadMine();
+  }
+
+  // 예약된 시간에 대기 신청
+  async function joinWait(slot: string) {
+    if (
+      !confirm(
+        `${label(slot)}은 이미 예약된 시간입니다.\n대기 신청을 하시겠습니까?\n\n취소가 나오면 대기 회원 중 신용 점수가 높은 순으로 자동 예약됩니다.`
+      )
+    )
+      return;
+    const { error } = await supabase.rpc("join_waitlist", { p_resource_id: resourceId, p_slot: slot });
+    if (error) showToast(toMessage(error.message));
+    else showToast(`${label(slot)} 대기 신청이 접수되었습니다.`, true);
+    loadTaken();
+    loadMine();
+  }
+
+  async function leaveWait(w: Wait) {
+    const { error } = await supabase.rpc("leave_waitlist", { p_id: w.id });
+    if (error) showToast(toMessage(error.message));
+    else showToast("대기 신청이 취소되었습니다.", true);
     loadMine();
   }
 
@@ -408,6 +452,7 @@ export default function Booking({
                     const isMine = mine.some((m) => m.resource_id === resourceId && sameTime(m.slot, slot));
                     const isTaken = taken.some((t) => sameTime(t, slot));
                     const isHeld = !isTaken && held.some((t) => sameTime(t, slot));
+                    const isWaiting = waits.some((w) => w.resource_id === resourceId && sameTime(w.slot, slot));
                     const isPeak = isPeakAt(d, h);
                     const peakBlocked = isPeak && !grade.peak;
                     const closed = !inRange || isPast || suspended;
@@ -419,7 +464,21 @@ export default function Booking({
                             내 예약
                           </span>
                         ) : isTaken ? (
-                          <span className="hatch flex h-full items-center justify-center text-[#8b9198]">예약됨</span>
+                          isWaiting ? (
+                            <span className="hatch flex h-full items-center justify-center font-semibold text-top">
+                              대기 중
+                            </span>
+                          ) : closed ? (
+                            <span className="hatch flex h-full items-center justify-center text-[#8b9198]">예약됨</span>
+                          ) : (
+                            <button
+                              onClick={() => joinWait(slot)}
+                              title="대기 신청"
+                              className="hatch h-full w-full text-[#8b9198] hover:text-ink hover:underline"
+                            >
+                              예약됨
+                            </button>
+                          )
                         ) : closed ? (
                           <span className="block h-full bg-[#f0f1f3]" />
                         ) : (
@@ -453,7 +512,7 @@ export default function Booking({
             <i className="inline-block h-3 w-3 bg-pine" /> 내 예약
           </li>
           <li className="flex items-center gap-1">
-            <i className="hatch inline-block h-3 w-3 border border-line" /> 예약됨
+            <i className="hatch inline-block h-3 w-3 border border-line" /> 예약됨 (누르면 대기 신청)
           </li>
           <li className="flex items-center gap-1">
             <i className="inline-block h-3 w-3 border border-line bg-warn-wash" /> 다른 회원 결정 중
@@ -469,6 +528,7 @@ export default function Booking({
           ※ {resource?.name} 운영 시간은 {resource?.open_hour}:00 ~ {resource?.close_hour}:00이며, 1시간 단위로 예약합니다.
           <br />※ &apos;가능&apos; 칸을 누르면 확인 창이 뜨고, 60초 안에 예약하기를 눌러야 예약됩니다.
           <br />※ 같은 시간을 여러 명이 누르면 먼저 누른 회원에게 우선권이 있습니다.
+          <br />※ &apos;예약됨&apos; 칸을 누르면 대기 신청을 할 수 있습니다. 취소가 나오면 신용 점수가 높은 순으로 자동 예약됩니다.
         </p>
       </section>
 
@@ -558,6 +618,31 @@ export default function Booking({
             </ul>
           )}
         </section>
+
+        {/* 대기 신청 */}
+        {waits.length > 0 && (
+          <section className="box">
+            <h2 className="tit">
+              대기 신청 <span className="num text-pine">{waits.length}</span>
+            </h2>
+            <ul className="-mt-2 divide-y divide-[#eceef0]">
+              {waits.map((w) => (
+                <li key={w.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+                  <span>
+                    <span className="font-semibold">{label(w.slot)}</span>
+                    <span className="ml-1.5 text-sub">{resources.find((x) => x.id === w.resource_id)?.name}</span>
+                  </span>
+                  <button className="btn shrink-0" onClick={() => leaveWait(w)}>
+                    대기 취소
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs leading-5 text-sub">
+              ※ 취소가 나오면 자동으로 예약됩니다. 배정 시점에 등급 조건(동시 예약 수 등)에 맞지 않으면 다음 순서로 넘어갑니다.
+            </p>
+          </section>
+        )}
       </aside>
 
       {/* 예약 확인 창 (떠 있는 동안은 예약 대기 상태) */}
