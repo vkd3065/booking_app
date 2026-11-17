@@ -18,6 +18,13 @@ const ERRORS: Record<string, string> = {
   ADMIN_ONLY: "관리자만 처리할 수 있습니다.",
   ALREADY_DECIDED: "이미 처리된 신청입니다.",
 };
+type AiOpinion = { category: string; summary: string; opinion: string };
+const AI_ERRORS: Record<string, string> = {
+  AI_OFF: "AI 키가 설정되지 않았습니다.",
+  AI_LIMIT: "오늘 AI 사용 횟수를 모두 사용했습니다. (하루 20회)",
+};
+const CATEGORY_CLS: Record<string, string> = { 불가피: "text-pine", 변심: "text-stop", "내용 부족": "text-warn" };
+
 const STATUS: Record<string, { text: string; cls: string }> = {
   pending: { text: "검토 대기", cls: "text-warn" },
   accepted: { text: "수락", cls: "text-pine" },
@@ -41,6 +48,7 @@ export default function Appeals() {
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [ai, setAi] = useState<Record<number, AiOpinion | string>>({}); // 신청별 AI 의견 (실패 시 문구)
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -74,6 +82,22 @@ export default function Appeals() {
       });
     }
     load();
+  }
+
+  // AI 의견: 서버가 연락처, 이름을 가린 뒤 AI에 보냄
+  async function askAi(id: number) {
+    setAi({ ...ai, [id]: "확인 중입니다." });
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "appeal", appeal_id: id }),
+      });
+      const data = await res.json();
+      setAi((cur) => ({ ...cur, [id]: res.ok ? data : (AI_ERRORS[data.error] ?? "의견을 받지 못했습니다.") }));
+    } catch {
+      setAi((cur) => ({ ...cur, [id]: "의견을 받지 못했습니다." }));
+    }
   }
 
   const pending = rows.filter((r) => r.status === "pending");
@@ -113,6 +137,26 @@ export default function Appeals() {
                 <tr>
                   <th>사유</th>
                   <td className="font-normal whitespace-pre-line">{r.reason}</td>
+                </tr>
+                <tr>
+                  <th>AI 의견</th>
+                  <td className="font-normal">
+                    {typeof ai[r.id] === "object" ? (
+                      <>
+                        <b className={CATEGORY_CLS[(ai[r.id] as AiOpinion).category]}>
+                          [{(ai[r.id] as AiOpinion).category}]
+                        </b>{" "}
+                        {(ai[r.id] as AiOpinion).summary}
+                        <span className="mt-0.5 block text-sub">{(ai[r.id] as AiOpinion).opinion}</span>
+                      </>
+                    ) : ai[r.id] ? (
+                      <span className="text-sub">{ai[r.id] as string}</span>
+                    ) : (
+                      <button className="btn py-0.5 text-xs" onClick={() => askAi(r.id)}>
+                        AI 의견 받기
+                      </button>
+                    )}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -166,7 +210,8 @@ export default function Appeals() {
       )}
 
       <p className="mt-4 text-xs leading-5 text-sub">
-        ※ 수락하면 노쇼로 깎인 점수가 복구되고 예약은 &apos;면제&apos;로 바뀝니다. 결과는 회원에게 알림으로 전달됩니다.
+        ※ AI 의견은 참고용입니다. AI에는 회원 번호와 사유만 전달되며, 사유 안의 연락처와 이름은 가려서 보냅니다.
+        <br />※ 수락하면 노쇼로 깎인 점수가 복구되고 예약은 &apos;면제&apos;로 바뀝니다. 결과는 회원에게 알림으로 전달됩니다.
       </p>
     </div>
   );
