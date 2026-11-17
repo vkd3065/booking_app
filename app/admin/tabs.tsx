@@ -6,16 +6,18 @@ import Overview from "./overview";
 import Members from "./members";
 import PeakHours from "./peak";
 import StatsView from "./stats";
+import Resources from "./resources";
 
 type Resource = { id: number; name: string; open_hour: number; close_hour: number };
 
-const TABS = ["판정", "예약 현황", "회원", "통계", "인기 시간대"] as const;
+const TABS = ["판정", "예약 현황", "회원", "통계", "인기 시간대", "예약 대상"] as const;
 const TITLES: Record<(typeof TABS)[number], string> = {
   판정: "방문 / 노쇼 판정",
   "예약 현황": "날짜별 예약 현황",
   회원: "회원 점수 조회",
   통계: "예약 통계",
   "인기 시간대": "인기 시간대 설정",
+  "예약 대상": "예약 대상 관리",
 };
 
 export default function Tabs({ resources }: { resources: Resource[] }) {
@@ -44,6 +46,7 @@ export default function Tabs({ resources }: { resources: Resource[] }) {
         {tab === "회원" && <Members />}
         {tab === "통계" && <StatsView />}
         {tab === "인기 시간대" && <PeakHours resources={resources} />}
+        {tab === "예약 대상" && <Resources />}
       </section>
     </div>
   );

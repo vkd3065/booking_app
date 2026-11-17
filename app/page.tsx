@@ -17,6 +17,7 @@ export default async function Home() {
   const { data: resources, error } = await supabase
     .from("resources")
     .select("id, name, open_hour, close_hour")
+    .eq("active", true)
     .order("id");
 
   if (error) {
