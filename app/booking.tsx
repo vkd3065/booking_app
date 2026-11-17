@@ -9,6 +9,7 @@ import ScoreRuler, { GRADE_TEXT } from "./score-ruler";
 type Resource = { id: number; name: string; open_hour: number; close_hour: number; price: number };
 type MyReservation = { id: number; slot: string; resource_id: number };
 type Wait = { id: number; slot: string; resource_id: number };
+type Notice = { id: number; kind: string; body: string; created_at: string };
 // 확인 창이 떠 있는 동안의 예약 대기
 type Pending = { slot: string; resourceId: number; ahead: number; expiresAt: number; note: string };
 
@@ -108,6 +109,7 @@ export default function Booking({
   const [mine, setMine] = useState<MyReservation[]>([]);
   const [waits, setWaits] = useState<Wait[]>([]); // 대기 신청
   const waitsRef = useRef<Wait[]>([]);
+  const [notices, setNotices] = useState<Notice[]>([]); // 확인 안 한 알림
   const [due, setDue] = useState<MyReservation[]>([]); // 예약 시각이 지나 결제할 예약
   const [paying, setPaying] = useState<MyReservation | null>(null);
   const [busySlot, setBusySlot] = useState<string | null>(null);
@@ -151,13 +153,20 @@ export default function Booking({
   const weekdayOf = (d: string) => new Date(d + "T12:00:00+09:00").getUTCDay();
   const isPeakAt = (d: string, h: number) => peaks.some((p) => p.weekday === weekdayOf(d) && p.hour === h);
 
-  // 내 예약 (앞으로 올 예약 / 시각이 지나 결제할 예약), 대기 신청
+  // 내 예약 (앞으로 올 예약 / 시각이 지나 결제할 예약), 대기 신청, 알림
   const loadMine = useCallback(async () => {
     const nowIso = new Date().toISOString();
-    const [res, w] = await Promise.all([
+    const [res, w, n] = await Promise.all([
       supabase.from("reservations").select("id, slot, resource_id").eq("status", "booked").order("slot"),
       supabase.from("waitlist").select("id, slot, resource_id").eq("status", "waiting").gt("slot", nowIso).order("slot"),
+      supabase
+        .from("notices")
+        .select("id, kind, body, created_at")
+        .is("read_at", null)
+        .order("created_at", { ascending: false })
+        .limit(10),
     ]);
+    setNotices(n.data ?? []);
     const all = res.data ?? [];
     setMine(all.filter((r) => r.slot > nowIso));
     setDue(all.filter((r) => r.slot <= nowIso));
@@ -368,6 +377,12 @@ export default function Booking({
     loadMine();
   }
 
+  // 알림 확인 (id가 없으면 전부)
+  async function readNotice(id?: number) {
+    await supabase.rpc("read_notices", { p_id: id ?? null });
+    setNotices((cur) => (id ? cur.filter((x) => x.id !== id) : []));
+  }
+
   // 테스트용 결제: 결제되면 방문으로 자동 처리
   async function pay() {
     if (!paying) return;
@@ -564,6 +579,33 @@ export default function Booking({
       </section>
 
       <aside className="space-y-5">
+        {/* 알림 (예약 전날 알림, 대기 배정 알림) */}
+        {notices.length > 0 && (
+          <section className="box">
+            <h2 className="tit flex items-center">
+              알림 <span className="num ml-1 text-stop">{notices.length}</span>
+              <button className="ml-auto text-xs font-normal text-sub hover:text-ink hover:underline" onClick={() => readNotice()}>
+                모두 확인
+              </button>
+            </h2>
+            <ul className="-mt-2 divide-y divide-[#eceef0]">
+              {notices.map((n) => (
+                <li key={n.id} className="flex items-start justify-between gap-3 py-3 text-sm leading-6">
+                  <span>
+                    <span className={`mr-1.5 text-xs font-semibold ${n.kind === "reminder" ? "text-warn" : "text-pine"}`}>
+                      [{n.kind === "reminder" ? "예약 알림" : n.kind === "assigned" ? "대기 배정" : "이의신청"}]
+                    </span>
+                    {n.body}
+                  </span>
+                  <button className="btn shrink-0" onClick={() => readNotice(n.id)}>
+                    확인
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {/* 예약 시각이 지난 예약: 결제하면 방문 처리 */}
         {due.length > 0 && (
           <section className="box border-pine">
