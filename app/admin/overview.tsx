@@ -18,6 +18,7 @@ const STATUS: Record<string, { text: string; cls: string }> = {
   no_show: { text: "노쇼", cls: "bg-stop-wash text-stop" },
   canceled: { text: "취소", cls: "bg-wash text-sub" },
   canceled_late: { text: "늦은 취소", cls: "bg-warn-wash text-warn" },
+  excused: { text: "면제", cls: "bg-wash text-sub" },
 };
 
 function kstDate(d: Date) {
