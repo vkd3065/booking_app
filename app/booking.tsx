@@ -71,10 +71,12 @@ function toMessage(raw: string) {
 }
 
 export default function Booking({
+  userId,
   resources,
   score,
   suspendedUntil,
 }: {
+  userId: string;
   resources: Resource[];
   score: number;
   suspendedUntil: string | null;
@@ -155,11 +157,12 @@ export default function Booking({
   const isPeakAt = (d: string, h: number) => peaks.some((p) => p.weekday === weekdayOf(d) && p.hour === h);
 
   // 내 예약 (앞으로 올 예약 / 시각이 지나 결제할 예약), 대기 신청, 알림
+  // 관리자는 모든 회원의 예약이 조회되므로 내 것만 거름
   const loadMine = useCallback(async () => {
     const nowIso = new Date().toISOString();
     const [res, w, n] = await Promise.all([
-      supabase.from("reservations").select("id, slot, resource_id").eq("status", "booked").order("slot"),
-      supabase.from("waitlist").select("id, slot, resource_id").eq("status", "waiting").gt("slot", nowIso).order("slot"),
+      supabase.from("reservations").select("id, slot, resource_id").eq("user_id", userId).eq("status", "booked").order("slot"),
+      supabase.from("waitlist").select("id, slot, resource_id").eq("user_id", userId).eq("status", "waiting").gt("slot", nowIso).order("slot"),
       supabase
         .from("notices")
         .select("id, kind, body, created_at")
@@ -174,7 +177,7 @@ export default function Booking({
     setWaits(w.data ?? []);
     waitsRef.current = w.data ?? [];
     return all;
-  }, [supabase]);
+  }, [supabase, userId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

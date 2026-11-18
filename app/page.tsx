@@ -30,7 +30,7 @@ export default async function Home() {
     <>
       <SiteHeader name={profile?.name ?? "회원"} isAdmin={!!profile?.is_admin} current="book" />
       <main className="mx-auto w-full max-w-[1080px] px-4 py-6">
-        <Booking resources={resources ?? []} score={score} suspendedUntil={profile?.suspended_until ?? null} />
+        <Booking userId={userId} resources={resources ?? []} score={score} suspendedUntil={profile?.suspended_until ?? null} />
       </main>
     </>
   );

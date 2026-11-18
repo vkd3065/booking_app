@@ -26,7 +26,7 @@ async function bookHelper(supabase: Supa, userId: string, message: string) {
     supabase.from("profiles").select("score").eq("id", userId).single(),
     supabase.from("resources").select("id, name, open_hour, close_hour, price").order("id"),
     supabase.from("peak_hours").select("resource_id, weekday, hour"),
-    supabase.from("reservations").select("id").eq("status", "booked").gt("slot", new Date().toISOString()),
+    supabase.from("reservations").select("id").eq("user_id", userId).eq("status", "booked").gt("slot", new Date().toISOString()),
   ]);
   const score = profile?.score ?? 100;
   const grade = gradeOf(score);
