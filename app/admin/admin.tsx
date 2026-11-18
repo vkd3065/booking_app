@@ -17,8 +17,16 @@ const STATUS_LABEL: Record<string, string> = {
   no_show: "노쇼",
 };
 
-// 노쇼 기준: 예약 시각 15분 경과까지 미방문
+// 노쇼 기준: 예약 시각 15분 경과까지 미방문 (DB에서도 같은 기준으로 막음)
 const NO_SHOW_MINUTES = 15;
+
+const ERRORS: Record<string, string> = {
+  ADMIN_ONLY: "관리자만 처리할 수 있습니다.",
+  CANNOT_DECIDE: "이미 판정되었거나 판정할 수 없는 예약입니다.",
+  NO_SHOW_TOO_EARLY: "노쇼는 예약 시각 15분이 지난 뒤 판정할 수 있습니다.",
+  CANNOT_UNDO: "판정을 취소할 수 없는 예약입니다.",
+  PAID_VISIT: "결제로 방문 처리된 예약은 판정을 취소할 수 없습니다.",
+};
 
 function label(slot: string) {
   return new Date(slot).toLocaleString("ko-KR", {
@@ -72,7 +80,8 @@ export default function Admin() {
     setBusy(true);
     const { error } = await supabase.rpc(fn, { p_id: id });
     setBusy(false);
-    setMsg(error ? "실패: " + error.message : done);
+    const key = error && Object.keys(ERRORS).find((k) => error.message.includes(k));
+    setMsg(error ? (key ? ERRORS[key] : "실패: " + error.message) : done);
     setTimeout(() => setMsg(""), 3000);
     load();
   }

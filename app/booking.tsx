@@ -61,6 +61,7 @@ const ERRORS: Record<string, string> = {
   WAIT_LIMIT: "대기 신청은 3건까지 가능합니다.",
   CANNOT_PAY: "결제할 수 없는 예약입니다.",
   TOO_EARLY: "예약 시각부터 결제할 수 있습니다.",
+  PAY_CLOSED: "이용 시간이 지나 결제할 수 없습니다. 방문 여부는 관리자가 확인합니다.",
   ALREADY_PAID: "이미 결제된 예약입니다.",
 };
 const won = (n: number) => n.toLocaleString("ko-KR") + "원";
@@ -405,6 +406,8 @@ export default function Booking({
     loadMine();
   }
   const priceOf = (id: number) => resources.find((x) => x.id === id)?.price ?? 0;
+  // 결제는 이용 시간(1시간) 안에만 (지난 예약은 관리자가 판정)
+  const payable = due.filter((r) => now < new Date(r.slot).getTime() + 3600000);
 
   // 예약 제한 상태 (점수 50 미만)
   const suspended = grade.max === 0;
@@ -577,7 +580,7 @@ export default function Booking({
             <br />※ 같은 시간을 여러 명이 누르면 먼저 누른 회원에게 우선권이 있습니다.
             {resource && (
               <>
-                <br />※ 이용 요금은 1시간 {won(resource.price)}이며, 예약 시각 이후 이 화면에서 결제합니다. (테스트 결제)
+                <br />※ 이용 요금은 1시간 {won(resource.price)}이며, 예약한 시간 안에 이 화면에서 결제합니다. (테스트 결제)
               </>
             )}
             <br />※ &apos;예약됨&apos; 칸을 누르면 대기 신청을 할 수 있습니다. 취소가 나오면 신용 점수가 높은 순으로 자동 예약됩니다.
@@ -624,11 +627,11 @@ export default function Booking({
         )}
 
         {/* 예약 시각이 지난 예약: 결제하면 방문 처리 */}
-        {due.length > 0 && (
+        {payable.length > 0 && (
           <section className="box border-pine">
             <h2 className="tit">이용 요금 결제</h2>
             <ul className="-mt-2 divide-y divide-[#eceef0]">
-              {due.map((r) => (
+              {payable.map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-3 py-3 text-sm">
                   <span>
                     <span className="font-semibold">{label(r.slot)}</span>
@@ -641,7 +644,10 @@ export default function Booking({
                 </li>
               ))}
             </ul>
-            <p className="text-xs leading-5 text-sub">※ 결제하면 방문으로 처리되어 신용 점수가 5점 오릅니다.</p>
+            <p className="text-xs leading-5 text-sub">
+              ※ 결제하면 방문으로 처리되어 신용 점수가 5점 오릅니다.
+              <br />※ 결제는 예약한 1시간 안에만 할 수 있습니다.
+            </p>
           </section>
         )}
 

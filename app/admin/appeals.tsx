@@ -66,7 +66,8 @@ export default function Appeals() {
 
   async function decide(r: Row, accept: boolean) {
     setBusy(true);
-    const { error } = await supabase.rpc("decide_appeal", {
+    // 돌아오는 값은 실제로 복구한 점수 (판정이 이미 취소된 예약이면 0)
+    const { data: back, error } = await supabase.rpc("decide_appeal", {
       p_id: r.id,
       p_accept: accept,
       p_note: notes[r.id] ?? null,
@@ -76,8 +77,13 @@ export default function Appeals() {
       const key = Object.keys(ERRORS).find((k) => error.message.includes(k));
       setMsg({ text: key ? ERRORS[key] : "실패: " + error.message, ok: false });
     } else {
+      const restored = typeof back === "number" ? back : -(r.reservations?.score_delta ?? 0);
       setMsg({
-        text: accept ? `수락했습니다. ${-(r.reservations?.score_delta ?? 0)}점을 복구했습니다.` : "거절했습니다.",
+        text: !accept
+          ? "거절했습니다."
+          : restored > 0
+            ? `수락했습니다. ${restored}점을 복구했습니다.`
+            : "수락했습니다. 판정이 이미 취소된 예약이라 점수 변동은 없습니다.",
         ok: true,
       });
     }
