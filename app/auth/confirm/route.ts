@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
 
   // 다른 사이트로 넘어가지 않게 이 사이트 안의 주소만 허용
   const raw = params.get("next") ?? "/";
-  const next = raw.startsWith("/") && !raw.startsWith("//") ? raw : "/";
+  // "//주소"나 "/\주소"는 브라우저가 다른 사이트로 해석하므로 막음
+  const next = raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\") ? raw : "/";
 
   const supabase = await createClient();
   let ok = false;
