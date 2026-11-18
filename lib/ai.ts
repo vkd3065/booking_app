@@ -1,7 +1,8 @@
 // 외부 AI(Gemini) 호출. 서버에서만 사용
 // VERTEX_API_KEY가 있으면 Vertex AI(Google Cloud), 없으면 AI Studio의 GEMINI_API_KEY 사용
-// 모델은 Gemini 4 Hydrogen, 추론 수준은 HIGH (환경 변수 GEMINI_MODEL, GEMINI_THINKING으로 바꿀 수 있음)
-const MODEL = process.env.GEMINI_MODEL || "gemini-4-hydrogen";
+// 모델은 Gemini 3.8 Flash, 추론 수준은 HIGH (환경 변수 GEMINI_MODEL, GEMINI_THINKING으로 바꿀 수 있음)
+// Gemini 4 Hydrogen은 이 프로젝트의 Vertex에서 404(모델 없음)가 나서 사용하지 않음
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 const THINKING = process.env.GEMINI_THINKING || "HIGH";
 
 export function aiReady() {
