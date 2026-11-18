@@ -20,7 +20,7 @@ const PRESETS = [
 ];
 
 const AI_ERRORS: Record<string, string> = {
-  AI_OFF: "AI 키가 설정되지 않았습니다. 서버 환경 변수 GEMINI_API_KEY를 확인해 주세요.",
+  AI_OFF: "AI 키가 설정되지 않았습니다. 서버 환경 변수 VERTEX_API_KEY 또는 GEMINI_API_KEY를 확인해 주세요.",
   AI_LIMIT: "오늘 사용할 수 있는 횟수를 모두 사용했습니다. (하루 20회)",
   ADMIN_ONLY: "관리자만 사용할 수 있습니다.",
 };

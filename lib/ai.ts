@@ -1,18 +1,33 @@
-// 외부 AI(Gemini) 호출. 서버에서만 사용 (키는 서버 환경 변수 GEMINI_API_KEY)
-const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+// 외부 AI(Gemini) 호출. 서버에서만 사용
+// VERTEX_API_KEY가 있으면 Vertex AI(Google Cloud), 없으면 AI Studio의 GEMINI_API_KEY 사용
 
 export function aiReady() {
-  return !!process.env.GEMINI_API_KEY;
+  return !!(process.env.VERTEX_API_KEY || process.env.GEMINI_API_KEY);
 }
 
-// 지시문과 자료를 보내고 JSON 답을 받음
+// 어디로 보낼지 (주소, 헤더)
+function target(): { url: string; headers: Record<string, string> } {
+  const vertexKey = process.env.VERTEX_API_KEY;
+  if (vertexKey) {
+    const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+    return {
+      url: `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${vertexKey}`,
+      headers: { "Content-Type": "application/json" },
+    };
+  }
+  const model = process.env.GEMINI_MODEL || "gemini-flash-latest";
+  return {
+    url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY! },
+  };
+}
+
+// 지시문과 자료를 보내고 JSON 답을 받음 (요청 형식은 두 곳이 같음)
 export async function askAI(system: string, user: string): Promise<Record<string, unknown>> {
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+  const { url, headers } = target();
+  const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": process.env.GEMINI_API_KEY!,
-    },
+    headers,
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: "user", parts: [{ text: user }] }],
