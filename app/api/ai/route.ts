@@ -4,6 +4,8 @@ import { gradeOf } from "@/lib/grade";
 import { aiReady, askAI } from "@/lib/ai";
 
 const DAY_LIMIT = 20; // 회원 1명당 하루 호출 횟수
+// 추론 수준이 높으면 답이 오래 걸릴 수 있어서 최대 60초까지 기다림
+export const maxDuration = 60;
 const DAY = 86400000;
 
 function kstDate(d: Date) {
