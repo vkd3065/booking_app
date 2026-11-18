@@ -14,7 +14,8 @@ type Notice = { id: number; kind: string; body: string; created_at: string };
 // 확인 창이 떠 있는 동안의 예약 대기
 type Pending = { slot: string; resourceId: number; ahead: number; expiresAt: number; note: string };
 
-const HOLD_SECONDS = 60;
+// 중간 점검 시연용으로 20초 (원래 60초, DB의 우선권 만료는 60초 그대로)
+const HOLD_SECONDS = 20;
 function holdUntil() {
   return Date.now() + HOLD_SECONDS * 1000;
 }
@@ -576,7 +577,7 @@ export default function Booking({
           </ul>
           <p className="mt-3 text-xs leading-5 text-sub">
             ※ {resource?.name} 운영 시간은 {resource?.open_hour}:00 ~ {resource?.close_hour}:00이며, 1시간 단위로 예약합니다.
-            <br />※ &apos;가능&apos; 칸을 누르면 확인 창이 뜨고, 60초 안에 예약하기를 눌러야 예약됩니다.
+            <br />※ &apos;가능&apos; 칸을 누르면 확인 창이 뜨고, {HOLD_SECONDS}초 안에 예약하기를 눌러야 예약됩니다.
             <br />※ 같은 시간을 여러 명이 누르면 먼저 누른 회원에게 우선권이 있습니다.
             {resource && (
               <>
