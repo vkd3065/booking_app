@@ -100,7 +100,7 @@ export default function Appeals() {
         body: JSON.stringify({ mode: "appeal", appeal_id: id }),
       });
       const data = await res.json();
-      setAi((cur) => ({ ...cur, [id]: res.ok ? data : (AI_ERRORS[data.error] ?? "의견을 받지 못했습니다.") }));
+      setAi((cur) => ({ ...cur, [id]: res.ok ? data : (AI_ERRORS[data.error] ?? `의견을 받지 못했습니다. (${data.error})`) }));
     } catch {
       setAi((cur) => ({ ...cur, [id]: "의견을 받지 못했습니다." }));
     }

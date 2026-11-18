@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { gradeOf } from "@/lib/grade";
-import { aiReady, askAI } from "@/lib/ai";
+import { AiError, aiReady, askAI } from "@/lib/ai";
 
 const DAY_LIMIT = 20; // 회원 1명당 하루 호출 횟수
 // 추론 수준이 높으면 답이 오래 걸릴 수 있어서 최대 60초까지 기다림
@@ -203,6 +203,8 @@ export async function POST(request: Request) {
           : await adminHelper(supabase, message);
     return NextResponse.json(result);
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "AI_ERROR", 502);
+    // 관리자 기능이면 실패 원인(구글의 설명)도 같이 돌려줌
+    const detail = e instanceof AiError && mode !== "book" ? e.detail : undefined;
+    return NextResponse.json({ error: e instanceof Error ? e.message : "AI_ERROR", detail }, { status: 502 });
   }
 }

@@ -9,6 +9,15 @@ export function aiReady() {
   return !!(process.env.VERTEX_API_KEY || process.env.GEMINI_API_KEY);
 }
 
+// 실패했을 때 구글이 돌려준 설명을 같이 담음 (키는 들어 있지 않음)
+export class AiError extends Error {
+  detail: string;
+  constructor(code: string, detail: string) {
+    super(code);
+    this.detail = detail;
+  }
+}
+
 // 어디로 보낼지 (주소, 헤더)
 function target(): { url: string; headers: Record<string, string> } {
   const vertexKey = process.env.VERTEX_API_KEY;
@@ -38,7 +47,9 @@ export async function askAI(system: string, user: string): Promise<Record<string
     }),
   });
   if (!res.ok) {
-    throw new Error("AI_HTTP_" + res.status);
+    const detail = (await res.text()).slice(0, 300);
+    console.error("AI 호출 실패:", res.status, detail);
+    throw new AiError("AI_HTTP_" + res.status, detail);
   }
   const body = await res.json();
   const text: string = (body?.candidates?.[0]?.content?.parts ?? [])
