@@ -28,7 +28,8 @@ export async function proxy(request: NextRequest) {
   const loggedIn = !!data?.claims;
   const path = request.nextUrl.pathname;
 
-  if (!loggedIn && path !== "/login") {
+  // 로그인 화면과 메일 링크 확인은 로그인 전에도 열림
+  if (!loggedIn && path !== "/login" && path !== "/auth/confirm") {
     return NextResponse.redirect(new URL("/login", request.url));
   }
   if (loggedIn && path === "/login") {
