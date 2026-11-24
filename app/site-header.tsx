@@ -9,11 +9,12 @@ export default function SiteHeader({
 }: {
   name: string;
   isAdmin: boolean;
-  current: "book" | "history" | "admin";
+  current: "book" | "history" | "store" | "admin";
 }) {
   const menu = [
     { key: "book", href: "/", text: "예약하기" },
     { key: "history", href: "/history", text: "점수 내역" },
+    { key: "store", href: "/store", text: "내 매장" },
     ...(isAdmin ? [{ key: "admin", href: "/admin", text: "관리자" }] : []),
   ];
   return (
