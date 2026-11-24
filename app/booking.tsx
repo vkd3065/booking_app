@@ -73,11 +73,13 @@ function toMessage(raw: string) {
 
 export default function Booking({
   userId,
+  storeName,
   resources,
   score,
   suspendedUntil,
 }: {
   userId: string;
+  storeName: string;
   resources: Resource[];
   score: number;
   suspendedUntil: string | null;
@@ -440,7 +442,7 @@ export default function Booking({
       <div className="min-w-0 space-y-5">
         {/* 주간 시간표 */}
         <section className="box min-w-0">
-          <h2 className="tit">예약하기</h2>
+          <h2 className="tit">{storeName ? `${storeName} 예약` : "예약하기"}</h2>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="seg pl-px">
               {resources.map((r) => (

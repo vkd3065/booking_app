@@ -14,9 +14,13 @@ export default async function Home() {
     .eq("id", userId)
     .single();
 
+  // 지금은 매장이 하나 (기본 매장)
+  const { data: store } = await supabase.from("stores").select("id, name").eq("slug", "main").single();
+
   const { data: resources, error } = await supabase
     .from("resources")
     .select("id, name, open_hour, close_hour, price")
+    .eq("store_id", store?.id ?? 0)
     .eq("active", true)
     .order("id");
 
@@ -30,7 +34,7 @@ export default async function Home() {
     <>
       <SiteHeader name={profile?.name ?? "회원"} isAdmin={!!profile?.is_admin} current="book" />
       <main className="mx-auto w-full max-w-[1080px] px-4 py-6">
-        <Booking userId={userId} resources={resources ?? []} score={score} suspendedUntil={profile?.suspended_until ?? null} />
+        <Booking userId={userId} storeName={store?.name ?? ""} resources={resources ?? []} score={score} suspendedUntil={profile?.suspended_until ?? null} />
       </main>
     </>
   );
