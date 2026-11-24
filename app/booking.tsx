@@ -14,8 +14,7 @@ type Notice = { id: number; kind: string; body: string; created_at: string };
 // 확인 창이 떠 있는 동안의 예약 대기
 type Pending = { slot: string; resourceId: number; ahead: number; expiresAt: number; note: string };
 
-// 중간 점검 시연용으로 20초 (원래 60초, DB의 우선권 만료는 60초 그대로)
-const HOLD_SECONDS = 20;
+const HOLD_SECONDS = 60;
 function holdUntil() {
   return Date.now() + HOLD_SECONDS * 1000;
 }
