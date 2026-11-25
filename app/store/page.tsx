@@ -51,9 +51,6 @@ export default async function MyStore() {
                 </tr>
               </tbody>
             </table>
-            <p className="mt-3 text-xs leading-5 text-sub">
-              ※ 매장별 예약 화면과 매장 관리(예약 대상, 판정)는 다음 단계에서 열립니다.
-            </p>
           </section>
         ) : (
           <StoreForm />
